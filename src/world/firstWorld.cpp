@@ -24,6 +24,13 @@ static Chunk* WorldGetChunk(World* world, int cx, int cz) {
     return c;
 }
 
+// Aggiunta: seed per la dimensione
+static int currentDimensionSeed = 0;
+
+void SetWorldDimension(int dimension) {
+    currentDimensionSeed = dimension * 1000;
+}
+
 static void GenerateChunk(Chunk* c) {
     float waterLevel = WATER_LEVEL;
     for (int x = 0; x <= CHUNK_SIZE; x++) {
@@ -31,9 +38,10 @@ static void GenerateChunk(Chunk* c) {
             float wx = (float)(c->chunkX * CHUNK_SIZE + x);
             float wz = (float)(c->chunkZ * CHUNK_SIZE + z);
             
-            float height = stb_perlin_noise3(wx * 0.02f, 0, wz * 0.02f, 0, 0, 0) * 8.0f +
-                          stb_perlin_noise3(wx * 0.05f, 10, wz * 0.05f, 0, 0, 0) * 4.0f +
-                          stb_perlin_noise3(wx * 0.1f, 20, wz * 0.1f, 0, 0, 0) * 2.0f + 5.0f;
+            // Usa seed diverso per dimensione diversa
+            float height = stb_perlin_noise3(wx * 0.02f, currentDimensionSeed, wz * 0.02f, 0, 0, 0) * 8.0f +
+                          stb_perlin_noise3(wx * 0.05f, 10 + currentDimensionSeed, wz * 0.05f, 0, 0, 0) * 4.0f +
+                          stb_perlin_noise3(wx * 0.1f, 20 + currentDimensionSeed, wz * 0.1f, 0, 0, 0) * 2.0f + 5.0f;
             
             c->heightMap[x][z] = height;
             
@@ -157,6 +165,17 @@ static bool IsWaterAt(Chunk* c, int x, int y, int z) {
     return (y >= (int)terrainHeight && y < (int)waterHeight);
 }
 
+// Colori che cambiano in base alla dimensione corrente
+static Color currentGrassTop = {153, 51, 255, 255};
+static Color currentDirtSide = {51, 25, 0, 255};
+static Color currentDirt = {51, 25, 0, 255};
+
+void SetDimensionColors(Color grassTop, Color dirtSide, Color dirt) {
+    currentGrassTop = grassTop;
+    currentDirtSide = dirtSide;
+    currentDirt = dirt;
+}
+
 static void GenerateChunkMesh(Chunk* c) {
     if (c->meshGenerated) {
         UnloadMesh(c->mesh);
@@ -167,10 +186,10 @@ static void GenerateChunkMesh(Chunk* c) {
     std::vector<float> texcoords;
     std::vector<unsigned char> colors;
     
-    Color grassTop = {153, 51, 255, 255};  // viola erbaceo
-    Color dirtSide = {51, 25, 0, 255};     // marrone lato
-    Color dirt = {51, 25, 0, 255};         // marrone terra
-    Color waterCol = {153, 255, 153, 180};  // acqua trasparente blu
+    Color grassTop = currentGrassTop;
+    Color dirtSide = currentDirtSide;
+    Color dirt = currentDirt;
+    Color waterCol = {30, 100, 255, 180};  // acqua trasparente blu
     
     // FASE 1: Genera il terreno solido
     for (int x = 0; x < CHUNK_SIZE; x++) {
@@ -379,4 +398,15 @@ float GetTerrainHeightAt(World* world, float x, float z) {
 BlockType GetBlockAt(World* world, int x, int y, int z) {
     float height = GetTerrainHeightAt(world, (float)x, (float)z);
     return (y < height) ? BLOCK_DIRT : BLOCK_AIR;
+}
+
+void RegenerateAllChunks(World* world) {
+    // Marca tutti i chunk come non generati per forzare la rigenerazione
+    for (int i = 0; i < world->chunkCount; i++) {
+        if (world->chunks[i].meshGenerated) {
+            UnloadMesh(world->chunks[i].mesh);
+        }
+        world->chunks[i].generated = false;
+        world->chunks[i].meshGenerated = false;
+    }
 }

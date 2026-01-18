@@ -1,0 +1,229 @@
+#include "portal.h"
+#include <raymath.h>
+#include <cmath>
+
+void GetDimensionColors(DimensionType dim, Color* grassTop, Color* dirtSide, Color* dirt) {
+    switch(dim) {
+        case DIMENSION_PURPLE:
+            *grassTop = (Color){153, 51, 255, 255};  // Viola
+            *dirtSide = (Color){51, 25, 0, 255};
+            *dirt = (Color){51, 25, 0, 255};
+            break;
+        case DIMENSION_GREEN:
+            *grassTop = (Color){50, 200, 50, 255};   // Verde brillante
+            *dirtSide = (Color){101, 67, 33, 255};   // Marrone chiaro
+            *dirt = (Color){139, 90, 43, 255};
+            break;
+        case DIMENSION_RED:
+            *grassTop = (Color){255, 50, 50, 255};   // Rosso alieno
+            *dirtSide = (Color){150, 30, 30, 255};   // Rosso scuro
+            *dirt = (Color){100, 20, 20, 255};
+            break;
+        default:
+            *grassTop = WHITE;
+            *dirtSide = GRAY;
+            *dirt = DARKGRAY;
+            break;
+    }
+}
+
+void InitPortalSystem(PortalSystem* ps) {
+    ps->portals.clear();
+    ps->currentDimension = DIMENSION_PURPLE;
+    ps->portalCheckRadius = 3.0f;
+    
+    // Inizializza la Portal Gun
+    ps->gun.offset = (Vector3){0.5f, -0.3f, 0.8f};  // Posizione in basso a destra
+    ps->gun.shootCooldown = 0.0f;
+    ps->gun.hasModel = false;
+    
+    // Prova a caricare il modello della gun (opzionale)
+    // Se non esiste, useremo una mesh procedurale
+    if (FileExists("assets/models/portalgun.obj") || FileExists("assets/models/portalgun.glb")) {
+        const char* path = FileExists("assets/models/portalgun.obj") ? 
+                          "assets/models/portalgun.obj" : "assets/models/portalgun.glb";
+        ps->gun.gunModel = LoadModel(path);
+        ps->gun.hasModel = true;
+    } else {
+        // Crea una gun procedurale semplice
+        Mesh gunMesh = GenMeshCylinder(0.05f, 0.3f, 8);
+        ps->gun.gunModel = LoadModelFromMesh(gunMesh);
+        ps->gun.hasModel = true;
+    }
+}
+
+void ShootPortal(PortalSystem* ps, Camera3D camera, World* world) {
+    // Raycast dal centro dello schermo
+    Ray ray;
+    ray.position = camera.position;
+    ray.direction = Vector3Subtract(camera.target, camera.position);
+    ray.direction = Vector3Normalize(ray.direction);
+    
+    // Trova il punto di impatto con il terreno
+    float maxDistance = 100.0f;
+    float step = 0.5f;
+    Vector3 hitPoint = {0};
+    bool foundHit = false;
+    
+    for (float dist = 0; dist < maxDistance; dist += step) {
+        Vector3 testPoint = Vector3Add(ray.position, Vector3Scale(ray.direction, dist));
+        float terrainHeight = GetTerrainHeightAt(world, testPoint.x, testPoint.z);
+        
+        if (testPoint.y <= terrainHeight) {
+            hitPoint = testPoint;
+            hitPoint.y = terrainHeight;
+            foundHit = true;
+            break;
+        }
+    }
+    
+    if (foundHit) {
+        // Crea un nuovo portale
+        Portal portal;
+        portal.position = hitPoint;
+        portal.animationTime = 0.0f;
+        portal.maxRadius = 2.0f;
+        portal.active = true;
+        
+        // Determina la dimensione target (cicla tra le dimensioni)
+        portal.targetDimension = (DimensionType)((ps->currentDimension + 1) % DIMENSION_COUNT);
+        
+        // Colore del portale in base alla dimensione target
+        switch(portal.targetDimension) {
+            case DIMENSION_PURPLE:
+                portal.color = (Color){153, 51, 255, 255};
+                break;
+            case DIMENSION_GREEN:
+                portal.color = (Color){50, 255, 50, 255};
+                break;
+            case DIMENSION_RED:
+                portal.color = (Color){255, 50, 50, 255};
+                break;
+            default:
+                portal.color = WHITE;
+                break;
+        }
+        
+        ps->portals.push_back(portal);
+        
+        // Limita il numero di portali (max 3)
+        if (ps->portals.size() > 3) {
+            ps->portals.erase(ps->portals.begin());
+        }
+    }
+}
+
+void UpdatePortalSystem(PortalSystem* ps, Camera3D camera, World* world, float deltaTime) {
+    // Aggiorna cooldown
+    if (ps->gun.shootCooldown > 0) {
+        ps->gun.shootCooldown -= deltaTime;
+    }
+    
+    // Spara portale con tasto destro mouse
+    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) && ps->gun.shootCooldown <= 0) {
+        ShootPortal(ps, camera, world);
+        ps->gun.shootCooldown = 0.5f;  // Cooldown di mezzo secondo
+    }
+    
+    // Aggiorna animazioni portali
+    for (size_t i = 0; i < ps->portals.size(); i++) {
+        if (ps->portals[i].active) {
+            ps->portals[i].animationTime += deltaTime * 3.0f;
+            
+            // Limita l'animazione
+            if (ps->portals[i].animationTime > 1.0f) {
+                ps->portals[i].animationTime = 1.0f;
+            }
+        }
+    }
+}
+
+void DrawPortalGun(PortalSystem* ps, Camera3D camera) {
+    if (!ps->gun.hasModel) return;
+    
+    // Calcola la posizione della gun relativa alla camera
+    Vector3 forward = Vector3Subtract(camera.target, camera.position);
+    forward = Vector3Normalize(forward);
+    
+    Vector3 right = Vector3CrossProduct(forward, camera.up);
+    right = Vector3Normalize(right);
+    
+    Vector3 gunPos = camera.position;
+    gunPos = Vector3Add(gunPos, Vector3Scale(right, ps->gun.offset.x));
+    gunPos = Vector3Add(gunPos, Vector3Scale(camera.up, ps->gun.offset.y));
+    gunPos = Vector3Add(gunPos, Vector3Scale(forward, ps->gun.offset.z));
+    
+    // Calcola la rotazione per puntare nella direzione della camera
+    float angle = atan2f(forward.x, forward.z) * RAD2DEG;
+    
+    // Disegna la gun
+    DrawModelEx(ps->gun.gunModel, gunPos, 
+                (Vector3){0, 1, 0}, angle, 
+                (Vector3){0.5f, 0.5f, 0.5f}, 
+                (Color){100, 255, 100, 255});
+}
+
+void DrawPortals(PortalSystem* ps) {
+    for (size_t i = 0; i < ps->portals.size(); i++) {
+        Portal* p = &ps->portals[i];
+        if (!p->active) continue;
+        
+        float currentRadius = p->maxRadius * p->animationTime;
+        
+        // Effetto Rick & Morty: cerchio con anelli animati
+        int rings = 5;
+        for (int r = 0; r < rings; r++) {
+            float ringRadius = currentRadius * (1.0f - (float)r / rings);
+            float alpha = 255.0f * (1.0f - (float)r / rings);
+            
+            // Animazione rotante
+            float rotation = p->animationTime * 360.0f + r * 72.0f;
+            
+            Color ringColor = p->color;
+            ringColor.a = (unsigned char)alpha;
+            
+            // Disegna cerchio orizzontale sul terreno
+            DrawCircle3D(p->position, ringRadius, 
+                        (Vector3){1, 0, 0}, 90.0f, ringColor);
+            
+            // Disegna anche un cerchio verticale per effetto più "dimensionale"
+            DrawCircle3D(p->position, ringRadius * 0.8f, 
+                        (Vector3){0, 1, 0}, rotation, 
+                        Fade(ringColor, 0.3f));
+        }
+        
+        // Centro del portale luminoso
+        DrawSphere(p->position, 0.2f, Fade(p->color, 0.8f));
+        
+        // Particelle che volano intorno
+        int particleCount = 8;
+        for (int j = 0; j < particleCount; j++) {
+            float angle = (p->animationTime * 360.0f + j * 360.0f / particleCount) * DEG2RAD;
+            float px = p->position.x + cosf(angle) * currentRadius * 0.7f;
+            float pz = p->position.z + sinf(angle) * currentRadius * 0.7f;
+            float py = p->position.y + sinf(p->animationTime * 10.0f + j) * 0.5f;
+            
+            DrawSphere((Vector3){px, py, pz}, 0.1f, Fade(p->color, 0.6f));
+        }
+    }
+}
+
+Portal* CheckPlayerNearPortal(PortalSystem* ps, Vector3 playerPos) {
+    for (size_t i = 0; i < ps->portals.size(); i++) {
+        Portal* p = &ps->portals[i];
+        if (!p->active) continue;
+        
+        float distance = Vector3Distance(playerPos, p->position);
+        if (distance < ps->portalCheckRadius) {
+            return p;
+        }
+    }
+    return NULL;
+}
+
+void CleanupPortalSystem(PortalSystem* ps) {
+    if (ps->gun.hasModel) {
+        UnloadModel(ps->gun.gunModel);
+    }
+    ps->portals.clear();
+}

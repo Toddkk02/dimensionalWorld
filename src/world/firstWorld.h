@@ -19,14 +19,13 @@ typedef enum BlockType
 
 typedef struct Chunk
 {
-    int chunkX, chunkZ; // Coordinate del chunk
-    bool generated;     // Generato?
+    int chunkX, chunkZ;
+    bool generated;
     bool meshGenerated;
-
     float heightMap[CHUNK_SIZE + 1][CHUNK_SIZE + 1]; 
-     float liquidMap[CHUNK_SIZE + 1][CHUNK_SIZE + 1]; 
-    Mesh mesh;                                       
- } Chunk;
+    float liquidMap[CHUNK_SIZE + 1][CHUNK_SIZE + 1]; 
+    Mesh mesh;
+} Chunk;
 
 typedef struct World
 {
@@ -38,8 +37,17 @@ typedef struct World
 void WorldInit(World *world);
 void WorldUpdate(World *world, Vector3 playerPos);
 void WorldDraw(World *world);
-float GetTerrainHeightAt(World *world, float x, float z);
 void WorldCleanup(World* world);
+
+// Funzioni di query
+float GetTerrainHeightAt(World *world, float x, float z);
 BlockType GetBlockAt(World *world, int x, int y, int z);
+
+// Funzioni per gestire le dimensioni
+void SetWorldDimension(int dimension);
+void SetDimensionColors(Color grassTop, Color dirtSide, Color dirt);
+
+// Funzione per rigenerare i chunk (quando cambi dimensione)
+void RegenerateAllChunks(World* world);
 
 #endif
