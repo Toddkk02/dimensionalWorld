@@ -1,34 +1,43 @@
-# Configurazione
-CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra
-INCLUDES = -Isrc -Iinclude
-LIBS = -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
+# Makefile per Dimensional World
+# -------------------------------------------------
 
-# File sorgenti (aggiungi qui i nuovi .cpp)
-SOURCES = src/main.cpp \
-          src/core/player.cpp \
-          src/world/firstWorld.cpp \
-          src/rendering/skybox.cpp
+CXX      := g++
+CXXFLAGS := -std=c++17 -Wall -Wextra
+INCLUDES := -Isrc -Iinclude
+LIBS     := -lraylib -lGL -lm -lpthread -ldl -lrt -lX11 -lstdc++
+BUILD    := build
+TARGET   := $(BUILD)/game
 
-# Target
-TARGET = build/game
+# Tutti i file sorgente
+SRCS := $(wildcard src/*.cpp) \
+        $(wildcard src/core/*.cpp) \
+        $(wildcard src/world/*.cpp) \
+        $(wildcard src/rendering/*.cpp)
 
-# Compila tutto
-all:
-	@mkdir -p build
-	$(CXX) $(CXXFLAGS) $(SOURCES) $(INCLUDES) -o $(TARGET) $(LIBS)
-	@echo "✅ Build completato!"
+# File oggetto corrispondenti
+OBJS := $(SRCS:src/%.cpp=$(BUILD)/%.o)
 
-# Compila ed esegui
-run: all
-	@./$(TARGET)
+# -------------------------------------------------
+# Regole principali
+# -------------------------------------------------
 
-# Pulisci
+all: $(TARGET)
+
+$(TARGET): $(OBJS)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
+
+# Compila ogni .cpp in .o
+$(BUILD)/%.o: src/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# Pulizia
 clean:
-	@rm -rf build
-	@echo "🗑️  Pulito!"
+	rm -rf $(BUILD)
 
-# Rebuild
-rebuild: clean all
+# Esegui il gioco
+run: $(TARGET)
+	./$(TARGET)
 
-.PHONY: all run clean rebuild
+.PHONY: all clean run

@@ -2,18 +2,16 @@
 #define PLAYER_H
 
 #include "raylib.h"
-
-#define MAX_COLUMNS 20
+#include "world/firstWorld.h"
 
 typedef struct PlayerSystem {
     Camera3D camera;
     int cameraMode;
-    Vector3 playerPositions[MAX_COLUMNS];
-    float heights[MAX_COLUMNS];
-    Color colors[MAX_COLUMNS];
+    Vector3 velocity;
+    bool isGrounded;
+    float gravity;
 } PlayerSystem;
 
-// Inizializza player, camera e colonne
-void InitPlayerSystem(PlayerSystem *ps);
+void UpdatePlayerPhysics(PlayerSystem *ps, World *world, float deltaTime);
 
 #endif

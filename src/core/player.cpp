@@ -1,29 +1,29 @@
 #include "player.h"
 #include <raylib.h>
+#include <raymath.h>
 
-void InitPlayerSystem(PlayerSystem *ps) {
-    // Camera setup
-    ps->camera.position = (Vector3){0.0f, 2.0f, 4.0f};
-    ps->camera.target   = (Vector3){0.0f, 2.0f, 0.0f};
-    ps->camera.up       = (Vector3){0.0f, 1.0f, 0.0f};
-    ps->camera.fovy     = 60.0f;
-    ps->camera.projection = CAMERA_PERSPECTIVE;
-    DisableCursor();
-    ps->cameraMode = CAMERA_FIRST_PERSON;
-
-    // Genera colonne random
-    for (int i = 0; i < MAX_COLUMNS; i++) {
-        ps->heights[i] = (float)GetRandomValue(1, 12);
-        ps->playerPositions[i] = (Vector3){
-            (float)GetRandomValue(-15, 15),
-            ps->heights[i] / 2.0f,
-            (float)GetRandomValue(-15, 15)
-        };
-        ps->colors[i] = (Color){
-           (unsigned char)GetRandomValue(20, 255),
-            (unsigned char)GetRandomValue(10, 55),
-            30,
-            255
-        };
+void UpdatePlayerPhysics(PlayerSystem *ps, World* world, float deltaTime) {
+    ps->velocity.y += ps->gravity * deltaTime;
+    
+    Vector3 newPos = ps->camera.position;
+    newPos.y += ps->velocity.y * deltaTime;
+    
+    float terrainHeight = GetTerrainHeightAt(world, newPos.x, newPos.z);
+    
+    // Collisione con margine di 0.1
+    if (newPos.y <= terrainHeight + 1.8f) {
+        newPos.y = terrainHeight + 1.8f;
+        ps->velocity.y = 0.0f;
+        ps->isGrounded = true;
+    } else {
+        ps->isGrounded = false;
     }
+    
+    if (ps->isGrounded && IsKeyPressed(KEY_SPACE)) {
+        ps->velocity.y = 10.0f;
+    }
+    
+    float deltaY = newPos.y - ps->camera.position.y;
+    ps->camera.position.y = newPos.y;
+    ps->camera.target.y += deltaY;
 }
