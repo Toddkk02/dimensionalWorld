@@ -151,10 +151,10 @@ static void GenerateChunkMesh(Chunk* c) {
     std::vector<float> texcoords;
     std::vector<unsigned char> colors;
     
-    Color grassTop = {100, 180, 80, 255};
-    Color grassSide = {80, 150, 60, 255};
-    Color dirt = {139, 90, 43, 255};
-    
+    // Un verde bosco con una forte componente viola/magenta per la parte superiore
+    Color grassTop = { 153, 51, 255, 255 };  // Viola erbaceo
+    Color dirtSide = { 51, 25, 0, 255 };  // Marrone terra // Marrone scuro (Dark Brown)
+    Color dirt = { 51, 25, 0, 255 };       // Marrone terra (Earth Brown)
     // Per ogni colonna nel chunk
     for (int x = 0; x < CHUNK_SIZE; x++) {
         for (int z = 0; z < CHUNK_SIZE; z++) {
@@ -168,7 +168,7 @@ static void GenerateChunkMesh(Chunk* c) {
                 
                 bool isTopBlock = (y == maxHeight);
                 Color topCol = isTopBlock ? grassTop : dirt;
-                Color sideCol = grassSide;
+                Color sideCol = dirtSide;
                 
                 // Controlla ogni faccia e aggiungi solo quelle visibili
                 
