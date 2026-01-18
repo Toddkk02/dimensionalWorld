@@ -10,6 +10,7 @@ typedef struct PlayerSystem {
     Vector3 velocity;
     bool isGrounded;
     float gravity;
+    bool inWater;
 } PlayerSystem;
 
 void UpdatePlayerPhysics(PlayerSystem *ps, World *world, float deltaTime);

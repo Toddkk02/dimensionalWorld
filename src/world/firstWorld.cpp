@@ -7,12 +7,6 @@
 #include <string.h>
 #include <vector>
 
-// Struttura per rappresentare un blocco 3D
-struct Block {
-    int x, y, z;
-    bool active;
-};
-
 static Chunk* WorldGetChunk(World* world, int cx, int cz) {
     for (int i = 0; i < world->chunkCount; i++) {
         if (world->chunks[i].chunkX == cx && world->chunks[i].chunkZ == cz) {
@@ -26,10 +20,12 @@ static Chunk* WorldGetChunk(World* world, int cx, int cz) {
     c->chunkZ = cz;
     c->generated = false;
     c->meshGenerated = false;
+    memset(&c->mesh, 0, sizeof(Mesh));
     return c;
 }
 
 static void GenerateChunk(Chunk* c) {
+    float waterLevel = WATER_LEVEL;
     for (int x = 0; x <= CHUNK_SIZE; x++) {
         for (int z = 0; z <= CHUNK_SIZE; z++) {
             float wx = (float)(c->chunkX * CHUNK_SIZE + x);
@@ -40,6 +36,13 @@ static void GenerateChunk(Chunk* c) {
                           stb_perlin_noise3(wx * 0.1f, 20, wz * 0.1f, 0, 0, 0) * 2.0f + 5.0f;
             
             c->heightMap[x][z] = height;
+            
+            // Calcola il livello dell'acqua
+            if (height < waterLevel) {
+                c->liquidMap[x][z] = waterLevel - height;
+            } else {
+                c->liquidMap[x][z] = 0.0f;
+            }
         }
     }
     c->generated = true;
@@ -73,7 +76,7 @@ static void AddCubeFace(std::vector<float>& verts, std::vector<float>& norms,
                        float x, float y, float z, int face, Color color) {
     
     switch(face) {
-        case 0: // TOP (Y+) - Guardando dall'alto verso il basso
+        case 0: // TOP (Y+)
             AddVertex(verts, norms, texc, cols, x,   y+1, z+1, 0, 1, 0, 0, 0, color);
             AddVertex(verts, norms, texc, cols, x+1, y+1, z+1, 0, 1, 0, 1, 0, color);
             AddVertex(verts, norms, texc, cols, x+1, y+1, z,   0, 1, 0, 1, 1, color);
@@ -135,7 +138,7 @@ static void AddCubeFace(std::vector<float>& verts, std::vector<float>& norms,
     }
 }
 
-// Verifica se un blocco esiste in una posizione
+// Verifica se un blocco di terreno esiste in una posizione
 static bool IsBlockAt(Chunk* c, int x, int y, int z) {
     if (x < 0 || x >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE) return false;
     if (y < 0) return false;
@@ -143,25 +146,42 @@ static bool IsBlockAt(Chunk* c, int x, int y, int z) {
     return (y <= height);
 }
 
+// Verifica se c'è acqua in una posizione
+static bool IsWaterAt(Chunk* c, int x, int y, int z) {
+    if (x < 0 || x >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE) return false;
+    if (y < 0) return false;
+    
+    float terrainHeight = c->heightMap[x][z];
+    float waterHeight = terrainHeight + c->liquidMap[x][z];
+    
+    return (y >= (int)terrainHeight && y < (int)waterHeight);
+}
+
 static void GenerateChunkMesh(Chunk* c) {
-    if (c->meshGenerated) UnloadMesh(c->mesh);
+    if (c->meshGenerated) {
+        UnloadMesh(c->mesh);
+    }
     
     std::vector<float> vertices;
     std::vector<float> normals;
     std::vector<float> texcoords;
     std::vector<unsigned char> colors;
     
-    // Un verde bosco con una forte componente viola/magenta per la parte superiore
-    Color grassTop = { 153, 51, 255, 255 };  // Viola erbaceo
-    Color dirtSide = { 51, 25, 0, 255 };  // Marrone terra // Marrone scuro (Dark Brown)
-    Color dirt = { 51, 25, 0, 255 };       // Marrone terra (Earth Brown)
-    // Per ogni colonna nel chunk
+    Color grassTop = {153, 51, 255, 255};  // viola erbaceo
+    Color dirtSide = {51, 25, 0, 255};     // marrone lato
+    Color dirt = {51, 25, 0, 255};         // marrone terra
+    Color waterCol = {153, 255, 153, 180};  // acqua trasparente blu
+    
+    // FASE 1: Genera il terreno solido
     for (int x = 0; x < CHUNK_SIZE; x++) {
         for (int z = 0; z < CHUNK_SIZE; z++) {
             int maxHeight = (int)c->heightMap[x][z];
             
-            // Genera i cubi SOLO per i blocchi sulla superficie
-            // Non generare tutto dall'alto al basso!
+            // Clamp maxHeight per evitare overflow
+            if (maxHeight < 0) maxHeight = 0;
+            if (maxHeight > 100) maxHeight = 100;
+            
+            // Genera i cubi del terreno
             for (int y = 0; y <= maxHeight; y++) {
                 float wx = (float)(c->chunkX * CHUNK_SIZE + x);
                 float wz = (float)(c->chunkZ * CHUNK_SIZE + z);
@@ -169,8 +189,6 @@ static void GenerateChunkMesh(Chunk* c) {
                 bool isTopBlock = (y == maxHeight);
                 Color topCol = isTopBlock ? grassTop : dirt;
                 Color sideCol = dirtSide;
-                
-                // Controlla ogni faccia e aggiungi solo quelle visibili
                 
                 // TOP - Solo se è il blocco più alto
                 if (isTopBlock) {
@@ -205,17 +223,76 @@ static void GenerateChunkMesh(Chunk* c) {
         }
     }
     
-    if (vertices.empty()) return;
+    // FASE 2: Genera l'acqua SOPRA il terreno
+    for (int x = 0; x < CHUNK_SIZE; x++) {
+        for (int z = 0; z < CHUNK_SIZE; z++) {
+            if (c->liquidMap[x][z] > 0.0f) {
+                float wx = (float)(c->chunkX * CHUNK_SIZE + x);
+                float wz = (float)(c->chunkZ * CHUNK_SIZE + z);
+                float terrainHeight = c->heightMap[x][z];
+                int waterDepth = (int)c->liquidMap[x][z];
+                
+                // Genera i cubi d'acqua dal terreno fino al livello dell'acqua
+                for (int wy = 0; wy < waterDepth; wy++) {
+                    int y = (int)terrainHeight + wy;
+                    
+                    // TOP - Mostra solo se è la superficie dell'acqua
+                    if (wy == waterDepth - 1) {
+                        AddCubeFace(vertices, normals, texcoords, colors, wx, y, wz, 0, waterCol);
+                    }
+                    
+                    // BOTTOM - Non mostrare (è sul terreno o su altra acqua)
+                    // Opzionale: se vuoi vedere il fondo dell'acqua, puoi abilitarlo
+                    
+                    // NORTH (Z+) - Solo se NON c'è acqua adiacente
+                    if (!IsWaterAt(c, x, y, z+1)) {
+                        AddCubeFace(vertices, normals, texcoords, colors, wx, y, wz, 2, waterCol);
+                    }
+                    
+                    // SOUTH (Z-)
+                    if (!IsWaterAt(c, x, y, z-1)) {
+                        AddCubeFace(vertices, normals, texcoords, colors, wx, y, wz, 3, waterCol);
+                    }
+                    
+                    // EAST (X+)
+                    if (!IsWaterAt(c, x+1, y, z)) {
+                        AddCubeFace(vertices, normals, texcoords, colors, wx, y, wz, 4, waterCol);
+                    }
+                    
+                    // WEST (X-)
+                    if (!IsWaterAt(c, x-1, y, z)) {
+                        AddCubeFace(vertices, normals, texcoords, colors, wx, y, wz, 5, waterCol);
+                    }
+                }
+            }
+        }
+    }
+    
+    if (vertices.empty()) {
+        c->meshGenerated = false;
+        return;
+    }
     
     // Crea la mesh
     memset(&c->mesh, 0, sizeof(Mesh));
     c->mesh.vertexCount = vertices.size() / 3;
     c->mesh.triangleCount = c->mesh.vertexCount / 3;
     
+    // Allocazione sicura della memoria
     c->mesh.vertices = (float*)malloc(vertices.size() * sizeof(float));
     c->mesh.normals = (float*)malloc(normals.size() * sizeof(float));
     c->mesh.texcoords = (float*)malloc(texcoords.size() * sizeof(float));
     c->mesh.colors = (unsigned char*)malloc(colors.size());
+    
+    if (!c->mesh.vertices || !c->mesh.normals || !c->mesh.texcoords || !c->mesh.colors) {
+        // Gestione errore allocazione
+        if (c->mesh.vertices) free(c->mesh.vertices);
+        if (c->mesh.normals) free(c->mesh.normals);
+        if (c->mesh.texcoords) free(c->mesh.texcoords);
+        if (c->mesh.colors) free(c->mesh.colors);
+        c->meshGenerated = false;
+        return;
+    }
     
     memcpy(c->mesh.vertices, vertices.data(), vertices.size() * sizeof(float));
     memcpy(c->mesh.normals, normals.data(), normals.size() * sizeof(float));
@@ -228,6 +305,12 @@ static void GenerateChunkMesh(Chunk* c) {
 
 void WorldInit(World* world) {
     world->chunkCount = 0;
+    // Inizializza tutti i chunk
+    for (int i = 0; i < MAX_CHUNKS; i++) {
+        world->chunks[i].generated = false;
+        world->chunks[i].meshGenerated = false;
+        memset(&world->chunks[i].mesh, 0, sizeof(Mesh));
+    }
 }
 
 void WorldUpdate(World* world, Vector3 playerPos) {
@@ -244,11 +327,27 @@ void WorldUpdate(World* world, Vector3 playerPos) {
 }
 
 void WorldDraw(World* world) {
-    Material mat = LoadMaterialDefault();
+    // CRITICO: Non chiamare LoadMaterialDefault() ogni frame!
+    static Material defaultMat = {0};
+    static bool materialLoaded = false;
+    
+    if (!materialLoaded) {
+        defaultMat = LoadMaterialDefault();
+        materialLoaded = true;
+    }
     
     for (int i = 0; i < world->chunkCount; i++) {
+        if (world->chunks[i].meshGenerated && world->chunks[i].mesh.vertexCount > 0) {
+            DrawMesh(world->chunks[i].mesh, defaultMat, MatrixIdentity());
+        }
+    }
+}
+
+void WorldCleanup(World* world) {
+    for (int i = 0; i < world->chunkCount; i++) {
         if (world->chunks[i].meshGenerated) {
-            DrawMesh(world->chunks[i].mesh, mat, MatrixIdentity());
+            UnloadMesh(world->chunks[i].mesh);
+            world->chunks[i].meshGenerated = false;
         }
     }
 }

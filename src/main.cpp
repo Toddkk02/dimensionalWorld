@@ -5,24 +5,27 @@
 #include "rendering/skybox.h"
 #include <cstdio>
 #include "rlgl.h"
-int main(void) {
-    InitWindow(800, 600, "Dimensional World");
+int main(void)
+{
+    InitWindow(1600, 900, "Dimensional World");
     rlEnableDepthTest();
     SetTargetFPS(60);
-    
+
     LoadTerrainShader();
-    
+
     Skybox skybox = LoadSkybox("assets/textures/skybox.jpg");
     World world;
     WorldInit(&world);
-    
+
     // Genera mondo intorno all'origine
-    for (int x = -2; x <= 2; x++) {
-        for (int z = -2; z <= 2; z++) {
-            WorldUpdate(&world, (Vector3){(float)(x*16), 10.0f, (float)(z*16)});
+    for (int x = -2; x <= 2; x++)
+    {
+        for (int z = -2; z <= 2; z++)
+        {
+            WorldUpdate(&world, (Vector3){(float)(x * 16), 10.0f, (float)(z * 16)});
         }
     }
-    
+
     // Spawn sicuro dall'alto
     PlayerSystem ps;
     ps.camera.position = (Vector3){8.0f, 50.0f, 8.0f};
@@ -35,10 +38,11 @@ int main(void) {
     ps.isGrounded = false;
     ps.gravity = -30.0f;
     DisableCursor();
-    
-    while (!WindowShouldClose()) {
+
+    while (!WindowShouldClose())
+    {
         float deltaTime = GetFrameTime();
-        
+
         UpdatePlayerPhysics(&ps, &world, deltaTime);
         UpdateCamera(&ps.camera, ps.cameraMode);
         WorldUpdate(&world, ps.camera.position);
@@ -46,25 +50,26 @@ int main(void) {
         BeginDrawing();
         ClearBackground(BLACK);
         DrawSkybox(skybox, ps.camera);
-        
+
         BeginMode3D(ps.camera);
         BeginShaderMode(terrainShader);
         WorldDraw(&world);
         EndShaderMode();
-        
+
         EndMode3D();
-        
+
         DrawFPS(10, 10);
         char debugText[200];
-        sprintf(debugText, "ESC = mouse | WASD = move | SPACE = jump\nPos: %.1f, %.1f, %.1f | Ground: %s", 
+        sprintf(debugText, "ESC = mouse | WASD = move | SPACE = jump\nPos: %.1f, %.1f, %.1f | Ground: %s",
                 ps.camera.position.x, ps.camera.position.y, ps.camera.position.z,
                 ps.isGrounded ? "YES" : "NO");
         DrawText(debugText, 10, 30, 20, WHITE);
         EndDrawing();
-    }    
-    
-    UnloadTerrainShader(); 
+    }
+
+    UnloadTerrainShader();
     UnloadSkybox(skybox);
+    WorldCleanup(&world);
     CloseWindow();
     return 0;
 }
