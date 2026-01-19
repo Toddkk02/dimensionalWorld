@@ -4,155 +4,124 @@
 #include <time.h>
 
 Mesh CreateTreeMesh() {
-    // Crea un albero stilizzato semplice
-    // Tronco: cilindro
     Mesh trunk = GenMeshCylinder(0.3f, 4.0f, 8);
     return trunk;
 }
 
 Mesh CreateRockMesh(int seed) {
-    // Usa il seed per variare la forma
     srand(seed);
     float radius = 0.5f + (rand() % 50) / 100.0f;
     int rings = 4 + rand() % 4;
     int slices = 4 + rand() % 4;
-    
     Mesh rock = GenMeshSphere(radius, rings, slices);
     return rock;
+}
+
+Mesh CreateCrystalMesh(int seed) {
+    srand(seed);
+    float height = 2.0f + (rand() % 100) / 50.0f;
+    float radius = 0.3f + (rand() % 50) / 100.0f;
+    int sides = 6 + rand() % 3;
+    Mesh crystal = GenMeshCylinder(radius, height, sides);
+    return crystal;
 }
 
 void InitDecorationSystem(DecorationSystem* ds) {
     ds->trees.clear();
     ds->rocks.clear();
+    ds->crystals.clear();
     ds->hasModels = false;
     
-
-    // Prova a caricare modelli se esistono
     if (FileExists("assets/models/tree.obj") || FileExists("assets/models/tree.glb")) {
         const char* path = FileExists("assets/models/tree.obj") ? 
                           "assets/models/tree.obj" : "assets/models/tree.glb";
         ds->treeModel = LoadModel(path);
-        ds->hasModels = true;
     } else {
-        // Crea modello procedurale
         Mesh treeMesh = CreateTreeMesh();
         ds->treeModel = LoadModelFromMesh(treeMesh);
-        ds->hasModels = true;
     }
     
-    // Rock model procedurale
     Mesh rockMesh = CreateRockMesh(42);
     ds->rockModel = LoadModelFromMesh(rockMesh);
+    
+    Mesh crystalMesh = CreateCrystalMesh(123);
+    ds->crystalModel = LoadModelFromMesh(crystalMesh);
+    
+    ds->hasModels = true;
 }
 
 Vector3 FindValidTerrainPosition(World* world, float minX, float maxX, float minZ, float maxZ) {
-    // Trova una posizione valida sul terreno
     float x = minX + (rand() % (int)(maxX - minX));
     float z = minZ + (rand() % (int)(maxZ - minZ));
     float y = GetTerrainHeightAt(world, x, z);
-    
     return (Vector3){x, y, z};
 }
 
-void GenerateDecorationsForDimension(DecorationSystem* ds, World* world, DimensionType dimension) {
+void GenerateDecorationsForDimension(DecorationSystem* ds, World* world, DimensionConfig* dimension) {
     ds->trees.clear();
     ds->rocks.clear();
+    ds->crystals.clear();
     
-    srand((unsigned int)time(NULL) + (int)dimension);
+    srand((unsigned int)time(NULL) + dimension->id);
     
-    switch(dimension) {
-        case DIMENSION_PURPLE:
-            // Dimensione viola: poche rocce viola/magenta
-            for (int i = 0; i < 15; i++) {
-                RockDecoration rock;
-                rock.position = FindValidTerrainPosition(world, -50, 50, -50, 50);
-                rock.scale = 1.0f + (rand() % 100) / 50.0f;
-                rock.color = (Color){
-                    (unsigned char)(150 + rand() % 105),
-                    (unsigned char)(50 + rand() % 50),
-                    (unsigned char)(200 + rand() % 55),
-                    255
-                };
-                rock.seed = rand();
-                ds->rocks.push_back(rock);
-            }
-            break;
-            
-        case DIMENSION_GREEN:
-            // Dimensione verde: molti alberi verdi
-            for (int i = 0; i < 40; i++) {
-                TreeDecoration tree;
-                tree.position = FindValidTerrainPosition(world, -50, 50, -50, 50);
-                tree.scale = 1.5f + (rand() % 100) / 100.0f;
-                tree.trunkColor = (Color){101, 67, 33, 255};  // Marrone
-                tree.foliageColor = (Color){
-                    (unsigned char)(30 + rand() % 50),
-                    (unsigned char)(150 + rand() % 105),
-                    (unsigned char)(30 + rand() % 50),
-                    255
-                };
-                ds->trees.push_back(tree);
-            }
-            
-            // Alcune rocce verdi
-            for (int i = 0; i < 10; i++) {
-                RockDecoration rock;
-                rock.position = FindValidTerrainPosition(world, -50, 50, -50, 50);
-                rock.scale = 0.8f + (rand() % 80) / 100.0f;
-                rock.color = (Color){80, 120, 80, 255};
-                rock.seed = rand();
-                ds->rocks.push_back(rock);
-            }
-            break;
-            
-        case DIMENSION_RED:
-            // Dimensione rossa: rocce rosse/arancioni alien
-            for (int i = 0; i < 25; i++) {
-                RockDecoration rock;
-                rock.position = FindValidTerrainPosition(world, -50, 50, -50, 50);
-                rock.scale = 1.2f + (rand() % 150) / 100.0f;
-                rock.color = (Color){
-                    (unsigned char)(200 + rand() % 55),
-                    (unsigned char)(30 + rand() % 70),
-                    (unsigned char)(10 + rand() % 40),
-                    255
-                };
-                rock.seed = rand();
-                ds->rocks.push_back(rock);
-            }
-            
-            // "Alberi" rossi alien (cristalli)
-            for (int i = 0; i < 15; i++) {
-                TreeDecoration crystal;
-                crystal.position = FindValidTerrainPosition(world, -50, 50, -50, 50);
-                crystal.scale = 2.0f + (rand() % 100) / 50.0f;
-                crystal.trunkColor = (Color){150, 30, 30, 255};
-                crystal.foliageColor = (Color){255, 100, 50, 255};
-                ds->trees.push_back(crystal);
-            }
-            break;
-            
-        default:
-            break;
+    // ALBERI
+    for (int i = 0; i < dimension->treeCount; i++) {
+        TreeDecoration tree;
+        tree.position = FindValidTerrainPosition(world, -50, 50, -50, 50);
+        tree.scale = 1.5f + (rand() % 100) / 100.0f;
+        tree.trunkColor = (Color){101, 67, 33, 255};
+        tree.foliageColor = dimension->treeColor;
+        ds->trees.push_back(tree);
+    }
+    
+    // ROCCE
+    for (int i = 0; i < dimension->rockCount; i++) {
+        RockDecoration rock;
+        rock.position = FindValidTerrainPosition(world, -50, 50, -50, 50);
+        rock.scale = 0.8f + (rand() % 120) / 100.0f;
+        rock.color = dimension->rockColor;
+        rock.seed = rand();
+        ds->rocks.push_back(rock);
+    }
+    
+    // CRISTALLI
+    for (int i = 0; i < dimension->crystalCount; i++) {
+        CrystalDecoration crystal;
+        crystal.position = FindValidTerrainPosition(world, -50, 50, -50, 50);
+        crystal.position.y += 0.5f;
+        
+        crystal.scale = 1.0f + (rand() % 150) / 100.0f;
+        crystal.rotation = (float)(rand() % 360);
+        
+        crystal.tiltAngle = 15.0f + (rand() % 30);
+        crystal.tiltAxis = (Vector3){
+            (rand() % 100) / 100.0f - 0.5f,
+            0.0f,
+            (rand() % 100) / 100.0f - 0.5f
+        };
+        crystal.tiltAxis = Vector3Normalize(crystal.tiltAxis);
+        
+        crystal.color = dimension->crystalColor;
+        crystal.seed = rand();
+        crystal.glowing = true;
+        
+        ds->crystals.push_back(crystal);
     }
 }
 
 void DrawDecorations(DecorationSystem* ds) {
-    // Disegna gli alberi
+    // ALBERI
     for (size_t i = 0; i < ds->trees.size(); i++) {
         TreeDecoration* tree = &ds->trees[i];
         
-        // Tronco
         DrawModelEx(ds->treeModel, tree->position,
                    (Vector3){0, 1, 0}, 0,
                    (Vector3){tree->scale, tree->scale, tree->scale},
                    tree->trunkColor);
         
-        // Fogliame (sfera o cono sopra il tronco)
         Vector3 foliagePos = tree->position;
         foliagePos.y += 3.0f * tree->scale;
         
-        // Disegna fogliame come sfere
         for (int j = 0; j < 3; j++) {
             float offset = (j - 1) * 0.8f * tree->scale;
             Vector3 leafPos = foliagePos;
@@ -163,15 +132,58 @@ void DrawDecorations(DecorationSystem* ds) {
         }
     }
     
-    // Disegna le rocce
+    // ROCCE
     for (size_t i = 0; i < ds->rocks.size(); i++) {
         RockDecoration* rock = &ds->rocks[i];
-        
-        // Usa mesh variata in base al seed
         DrawModelEx(ds->rockModel, rock->position,
                    (Vector3){0, 1, 0}, (float)(rock->seed % 360),
                    (Vector3){rock->scale, rock->scale, rock->scale},
                    rock->color);
+    }
+    
+    // CRISTALLI
+    for (size_t i = 0; i < ds->crystals.size(); i++) {
+        CrystalDecoration* crystal = &ds->crystals[i];
+        
+        Matrix matRotY = MatrixRotateY(crystal->rotation * DEG2RAD);
+        Matrix matTilt = MatrixRotate(crystal->tiltAxis, crystal->tiltAngle * DEG2RAD);
+        Matrix matScale = MatrixScale(crystal->scale, crystal->scale, crystal->scale);
+        Matrix matTrans = MatrixTranslate(crystal->position.x, 
+                                         crystal->position.y, 
+                                         crystal->position.z);
+        
+        Matrix transform = MatrixMultiply(matScale, matTilt);
+        transform = MatrixMultiply(transform, matRotY);
+        transform = MatrixMultiply(transform, matTrans);
+        
+        if (crystal->glowing) {
+            Color glowColor = crystal->color;
+            glowColor.a = 80;
+            
+            Matrix glowTransform = MatrixScale(crystal->scale * 1.2f, 
+                                              crystal->scale * 1.2f, 
+                                              crystal->scale * 1.2f);
+            glowTransform = MatrixMultiply(glowTransform, matTilt);
+            glowTransform = MatrixMultiply(glowTransform, matRotY);
+            glowTransform = MatrixMultiply(glowTransform, matTrans);
+            
+            DrawMesh(ds->crystalModel.meshes[0], 
+                    ds->crystalModel.materials[0], 
+                    glowTransform);
+        }
+        
+        DrawMesh(ds->crystalModel.meshes[0], 
+                ds->crystalModel.materials[0], 
+                transform);
+        
+        if (crystal->glowing && (rand() % 10) < 3) {
+            Vector3 particlePos = crystal->position;
+            particlePos.x += (rand() % 100 - 50) / 100.0f;
+            particlePos.y += (rand() % 200) / 100.0f;
+            particlePos.z += (rand() % 100 - 50) / 100.0f;
+            
+            DrawSphere(particlePos, 0.05f, Fade(crystal->color, 0.6f));
+        }
     }
 }
 
@@ -179,7 +191,9 @@ void CleanupDecorationSystem(DecorationSystem* ds) {
     if (ds->hasModels) {
         UnloadModel(ds->treeModel);
         UnloadModel(ds->rockModel);
+        UnloadModel(ds->crystalModel);
     }
     ds->trees.clear();
     ds->rocks.clear();
+    ds->crystals.clear();
 }

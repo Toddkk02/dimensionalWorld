@@ -1,6 +1,7 @@
 #include "firstWorld.h"
 #define STB_PERLIN_IMPLEMENTATION
 #include "stb_perlin.h"
+#include "dimensions.h" 
 #include <math.h>
 #include <stdlib.h>
 #include <raymath.h>
@@ -371,6 +372,41 @@ void WorldCleanup(World* world) {
     }
 }
 
+void WorldLoadTextures(World* world, DimensionConfig* dimension) {
+    if (world->useTextures) {
+        WorldUnloadTextures(world);
+    }
+    
+    world->useTextures = false;
+    
+    if (FileExists(dimension->grassTopTexture.c_str())) {
+        world->grassTopTexture = LoadTexture(dimension->grassTopTexture.c_str());
+        world->useTextures = true;
+    }
+    
+    if (FileExists(dimension->dirtSideTexture.c_str())) {
+        world->dirtSideTexture = LoadTexture(dimension->dirtSideTexture.c_str());
+    }
+    
+    if (FileExists(dimension->dirtTexture.c_str())) {
+        world->dirtTexture = LoadTexture(dimension->dirtTexture.c_str());
+    }
+    
+    if (FileExists(dimension->waterTexture.c_str())) {
+        world->waterTexture = LoadTexture(dimension->waterTexture.c_str());
+    }
+}
+
+void WorldUnloadTextures(World* world) {
+    if (world->useTextures) {
+        UnloadTexture(world->grassTopTexture);
+        UnloadTexture(world->dirtSideTexture);
+        UnloadTexture(world->dirtTexture);
+        UnloadTexture(world->waterTexture);
+        world->useTextures = false;
+    }
+}
+
 float GetTerrainHeightAt(World* world, float x, float z) {
     int chunkX = (int)floor(x / CHUNK_SIZE);
     int chunkZ = (int)floor(z / CHUNK_SIZE);
@@ -409,4 +445,64 @@ void RegenerateAllChunks(World* world) {
         world->chunks[i].generated = false;
         world->chunks[i].meshGenerated = false;
     }
+}
+ItemType RemoveBlock(World* world, int x, int y, int z) {
+    // Determina il chunk
+    int chunkX = (int)floor((float)x / CHUNK_SIZE);
+    int chunkZ = (int)floor((float)z / CHUNK_SIZE);
+    
+    Chunk* chunk = NULL;
+    for (int i = 0; i < world->chunkCount; i++) {
+        if (world->chunks[i].chunkX == chunkX && world->chunks[i].chunkZ == chunkZ) {
+            chunk = &world->chunks[i];
+            break;
+        }
+    }
+    
+    if (!chunk || !chunk->generated) return ItemType::NONE;
+    
+    // Coordinate locali nel chunk
+    int lx = x - chunkX * CHUNK_SIZE;
+    int lz = z - chunkZ * CHUNK_SIZE;
+    
+    // Clamp coordinate locali
+    if (lx < 0) lx = 0;
+    if (lx >= CHUNK_SIZE) lx = CHUNK_SIZE - 1;
+    if (lz < 0) lz = 0;
+    if (lz >= CHUNK_SIZE) lz = CHUNK_SIZE - 1;
+    
+    // Verifica se c'è un blocco qui
+    float currentHeight = chunk->heightMap[lx][lz];
+    
+    // Se il blocco target è sopra il terreno, non c'è nulla da scavare
+    if (y > (int)currentHeight || y < 0) {
+        return ItemType::NONE;
+    }
+    
+    // Rimuovi il blocco abbassando l'altezza di 1
+    chunk->heightMap[lx][lz] = (float)(y - 1);
+    
+    // Se abbassando l'altezza andiamo sotto zero, clamp a 0
+    if (chunk->heightMap[lx][lz] < 0.0f) {
+        chunk->heightMap[lx][lz] = 0.0f;
+    }
+    
+    // Rigenera la mesh del chunk
+    if (chunk->meshGenerated) {
+        UnloadMesh(chunk->mesh);
+        chunk->meshGenerated = false;
+    }
+    GenerateChunkMesh(chunk);
+    
+    // Determina il tipo di item droppato
+    ItemType dropType = ItemType::DIRT;
+    
+    // Se è il blocco superiore, droppa grass
+    if (y == (int)currentHeight) {
+        dropType = ItemType::GRASS;
+    } else {
+        dropType = ItemType::DIRT;
+    }
+    
+    return dropType;
 }
