@@ -11,27 +11,36 @@ CosmicState::CosmicState() :
     m_events.push_back({"realityflicker", 25.0f, false});
     m_events.push_back({"cosmosobserves", 50.0f, false});
 }
-
-CosmicState CosmicState::Get() {
+CosmicState& CosmicState::Get() {
     static CosmicState instance;
-    return instance;
+    return instance;   
 }
 
 void CosmicState::Update(float deltaTime) {
     m_timeInCurrentDimension += deltaTime;
-    m_tension += deltaTime * 0.05f;
+    m_tension += deltaTime * 0.005f;
     CheckEvents();
 }
 
 void CosmicState::OnPortalCrossed() {
-    m_tension = 5.0f;
+    
+    m_tension += 5.0f;
     CheckEvents();
 }
 
-void CosmicState::OnDimensionEntered(const std::string& dimensionID) {
+void CosmicState::OnDimensionEntered(const std::string& dimensionID)
+{
     m_currentDimension = dimensionID;
     m_timeInCurrentDimension = 0.0f;
-    m_tension = 2.0f;
+
+    // Crossing realities compounds madness
+    m_tension += 2.0f;
+
+    if (m_tension > 100.0f)
+        m_tension = 100.0f;
+
+
+    CheckEvents();
 }
 
 void CosmicState::OnArtifactCollected(const std::string& /*artifactID*/) {
@@ -39,7 +48,7 @@ void CosmicState::OnArtifactCollected(const std::string& /*artifactID*/) {
     CheckEvents();
 }
 
-void CosmicState::RemoveMadness(const std::string& /*madnessID*/) {
+void CosmicState::RemoveMadness() {
     if (m_timeInCurrentDimension > 25.0f) {
         m_tension -= 0.001f;
         if (m_tension < 0.0f) m_tension = 0.0f;

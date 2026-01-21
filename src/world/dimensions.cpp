@@ -197,49 +197,9 @@ void DimensionManager::Cleanup() {
 
 // ========== FACTORY DIMENSIONI ==========
 
-DimensionConfig DimensionManager::CreatePurpleDimension() {
-    DimensionConfig config;
-    config.id = 0;
-    config.name = "Purple Dimension";
-    config.description = "Il mondo viola originale di Rick";
-
-    config.grassTopColor = {153, 51, 255, 255};
-    config.dirtSideColor = {51, 25, 0, 255};
-    config.dirtColor = {51, 25, 0, 255};
-
-    // TEXTURE PATHS
-    config.grassTopTexture = "assets/textures/purple_grass.png";
-    config.dirtSideTexture = "assets/textures/purple_dirt_side.png";
-    config.dirtTexture = "assets/textures/purple_dirt.png";
-    config.waterTexture = "assets/textures/water.png";
-
-    config.skyboxTexture = "assets/textures/skybox_purple.jpg";
-    config.skyboxTint = {255, 200, 255, 255};
-
-    config.terrainSeed = 0;
-    config.terrainScale = 0.02f;
-    config.terrainHeight = 8.0f;
-    config.waterLevel = 4.0f;
-
-    config.treeCount = 0;
-    config.rockCount = 15;
-    config.crystalCount = 0;
-    config.rockColor = {153, 51, 255, 255};
-
-    config.ambientLight = {76, 51, 102, 255};
-    config.sunColor = {255, 204, 255, 255};
-    config.sunDirection = {-0.5f, -1.0f, -0.5f};
-
-    config.useFog = true;
-    config.fogColor = {100, 50, 150, 255};
-    config.fogDensity = 0.02f;
-
-    return config;
-}
-
 DimensionConfig DimensionManager::CreateGreenDimension() {
     DimensionConfig config;
-    config.id = 1;
+    config.id = 0;
     config.name = "Forest Dimension";
     config.description = "Dimensione verde con foreste rigogliose";
 
@@ -277,6 +237,48 @@ DimensionConfig DimensionManager::CreateGreenDimension() {
 
     return config;
 }
+
+
+DimensionConfig DimensionManager::CreatePurpleDimension() {
+    DimensionConfig config;
+    config.id = 1;
+    config.name = "Purple Dimension";
+    config.description = "Il mondo viola originale di Rick";
+
+    config.grassTopColor = {153, 51, 255, 255};
+    config.dirtSideColor = {51, 25, 0, 255};
+    config.dirtColor = {51, 25, 0, 255};
+
+    // TEXTURE PATHS
+    config.grassTopTexture = "assets/textures/purple_grass.png";
+    config.dirtSideTexture = "assets/textures/purple_dirt_side.png";
+    config.dirtTexture = "assets/textures/purple_dirt.png";
+    config.waterTexture = "assets/textures/water.png";
+
+    config.skyboxTexture = "assets/textures/skybox_purple.jpg";
+    config.skyboxTint = {255, 200, 255, 255};
+
+    config.terrainSeed = 0;
+    config.terrainScale = 0.02f;
+    config.terrainHeight = 8.0f;
+    config.waterLevel = 4.0f;
+
+    config.treeCount = 0;
+    config.rockCount = 15;
+    config.crystalCount = 0;
+    config.rockColor = {153, 51, 255, 255};
+
+    config.ambientLight = {76, 51, 102, 255};
+    config.sunColor = {255, 204, 255, 255};
+    config.sunDirection = {-0.5f, -1.0f, -0.5f};
+
+    config.useFog = true;
+    config.fogColor = {100, 50, 150, 255};
+    config.fogDensity = 0.02f;
+
+    return config;
+}
+
 
 DimensionConfig DimensionManager::CreateRedDimension() {
     DimensionConfig config;

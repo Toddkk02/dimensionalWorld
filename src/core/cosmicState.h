@@ -1,43 +1,36 @@
 #pragma once
+
 #include <string>
 #include <vector>
-struct CosmicEvent
-{
-    std::string id;
-    float triggerThreshold;
-    bool triggered;
-};
-
-class CosmicState
-{
+class CosmicState {
 public:
-    // Accesso globale (engine-style)
-    static CosmicState Get();
+    static CosmicState& Get();   // ← riferimento
 
-    // Update per frame
     void Update(float deltaTime);
-
-    // Eventi di gioco
     void OnPortalCrossed();
     void OnDimensionEntered(const std::string& dimensionID);
     void OnArtifactCollected(const std::string& artifactID);
-    void RemoveMadness(const std::string& madnessID);
-    
+    void RemoveMadness();
 
-    
-    // Query per altri sistemi
     float GetTension() const;
     float GetTimeInCurrentDimension() const;
     bool IsEventTriggered(const std::string& eventID) const;
 
 private:
     CosmicState();
+    CosmicState(const CosmicState&) = delete;
+    CosmicState& operator=(const CosmicState&) = delete;
 
-    void CheckEvents();
+    struct CosmicEvent {
+        std::string id;
+        float triggerThreshold;
+        bool triggered;
+    };
 
     float m_tension;
     float m_timeInCurrentDimension;
     std::string m_currentDimension;
-
     std::vector<CosmicEvent> m_events;
+
+    void CheckEvents();
 };

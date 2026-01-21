@@ -38,5 +38,5 @@ void CleanupPortalSystem(PortalSystem* ps);
 
 void GetDimensionColors(DimensionConfig* dim, Color* grassTop, Color* dirtSide, Color* dirt);
 Portal* CheckPlayerNearPortal(PortalSystem* ps, Vector3 playerPos);
-
+void selectDimension(PortalSystem* ps, int dimensionID, DimensionConfig *dimManager);
 #endif
