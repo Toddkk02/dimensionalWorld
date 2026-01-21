@@ -46,6 +46,7 @@ typedef struct DimensionConfig {
     Color fogColor;
     float fogDensity;
     
+
 } DimensionConfig;
 
 class DimensionManager {
@@ -67,5 +68,4 @@ public:
     static DimensionConfig CreateVolcanoDimension();
     static DimensionConfig CreateSpaceDimension();
 };
-
 #endif

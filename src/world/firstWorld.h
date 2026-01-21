@@ -55,5 +55,7 @@ void WorldLoadTextures(World* world, struct DimensionConfig* dimension);
 void WorldUnloadTextures(World* world);
 // Ritorna tipo blocco rimosso
 ItemType RemoveBlock(World* world, int x, int y, int z);  // ← Aggiungi World* come primo parametro
+bool PlaceBlock(World* world, int x, int y, int z, ItemType blockType);
+
 
 #endif

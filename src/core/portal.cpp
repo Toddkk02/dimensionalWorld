@@ -78,7 +78,7 @@ void UpdatePortalSystem(PortalSystem* ps, Camera3D camera, World* world, Dimensi
         ps->gun.shootCooldown -= deltaTime;
     }
     
-    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) && ps->gun.shootCooldown <= 0) {
+    if (IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE) && ps->gun.shootCooldown <= 0) {
         ShootPortal(ps, camera, world, dimManager);
         ps->gun.shootCooldown = 0.5f;
     }

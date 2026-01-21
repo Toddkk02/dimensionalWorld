@@ -1,5 +1,3 @@
-// ========== mining.cpp - VERSIONE CORRETTA DEFINITIVA ==========
-
 #include "mining.h"
 #include "raymath.h"
 #include "../world/firstWorld.h"
@@ -31,7 +29,57 @@ static float GetRawTerrainHeight(World* world, float x, float z) {
     return chunk->heightMap[x0][z0];
 }
 
-// Raycast che cerca BLOCCHI SOLIDI
+// Raycast per PIAZZARE blocchi
+bool RaycastPlaceBlock(Camera3D cam, World* world, Vector3& placePos) {
+    Vector3 dir = Vector3Normalize(Vector3Subtract(cam.target, cam.position));
+    Vector3 pos = cam.position;
+    float maxDist = 5.0f;
+    float step = 0.05f;
+    
+    Vector3 lastValidPos = pos;
+    bool foundSurface = false;
+    
+    for (float dist = 1.0f; dist < maxDist; dist += step) {
+        pos = Vector3Add(cam.position, Vector3Scale(dir, dist));
+        
+        // Ottieni altezza RAW del terreno
+        float terrainHeight = GetRawTerrainHeight(world, pos.x, pos.z);
+        
+        // Se siamo vicini alla superficie del terreno
+        if (pos.y <= terrainHeight + 1.5f && pos.y > terrainHeight - 0.5f) {
+            foundSurface = true;
+            
+            // Piazza il blocco SOPRA il terreno esistente
+            placePos.x = floorf(pos.x);
+            placePos.z = floorf(pos.z);
+            placePos.y = floorf(terrainHeight) + 1.0f;
+            
+            // Verifica distanza dal giocatore (non piazzare troppo vicino)
+            Vector3 playerFeet = cam.position;
+            playerFeet.y -= 1.5f; // Altezza giocatore
+            
+            float distFromPlayer = Vector3Distance(placePos, playerFeet);
+            if (distFromPlayer < 1.0f) {
+                TraceLog(LOG_WARNING, "Too close to player (%.2f)", distFromPlayer);
+                return false;
+            }
+            
+            TraceLog(LOG_INFO, "Place position: (%.0f, %.0f, %.0f) | Terrain: %.1f", 
+                     placePos.x, placePos.y, placePos.z, terrainHeight);
+            return true;
+        }
+        
+        lastValidPos = pos;
+    }
+    
+    if (!foundSurface) {
+        TraceLog(LOG_WARNING, "No valid surface found for placement");
+    }
+    
+    return false;
+}
+
+// Raycast per SCAVARE blocchi
 bool RaycastBlock(Camera3D cam, World* world, Vector3& hitPos) {
     Vector3 dir = Vector3Normalize(Vector3Subtract(cam.target, cam.position));
     Vector3 pos = cam.position;
@@ -39,15 +87,12 @@ bool RaycastBlock(Camera3D cam, World* world, Vector3& hitPos) {
     float maxDist = 10.0f;
     float step = 0.1f;
     
-    for (float dist = 0.5f; dist < maxDist; dist += step) { // Inizia da 0.5 per evitare auto-hit
+    for (float dist = 0.5f; dist < maxDist; dist += step) {
         pos = Vector3Add(cam.position, Vector3Scale(dir, dist));
         
-        // Ottieni l'altezza RAW del terreno
         float terrainHeight = GetRawTerrainHeight(world, pos.x, pos.z);
         
-        // Se il punto del raggio è DENTRO un blocco solido
         if (pos.y <= terrainHeight + 1.0f) {
-            // Abbiamo colpito!
             hitPos.x = floorf(pos.x);
             hitPos.z = floorf(pos.z);
             hitPos.y = floorf(terrainHeight);
@@ -62,28 +107,25 @@ bool RaycastBlock(Camera3D cam, World* world, Vector3& hitPos) {
     return false;
 }
 
+// Aggiorna il mining
 void UpdateMining(MiningState& mining, Camera3D cam, World* world, float dt) {
     if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
         Vector3 hit;
         if (RaycastBlock(cam, world, hit)) {
-            // Verifica che il blocco sia valido
             float terrainHeight = GetRawTerrainHeight(world, hit.x, hit.z);
             
             if (hit.y > terrainHeight || hit.y < 0) {
-                // Blocco non valido
                 mining.mining = false;
                 mining.progress = 0.0f;
                 return;
             }
             
-            // Se è lo stesso blocco, continua il mining
             if (mining.mining && 
                 hit.x == mining.targetBlock.x && 
                 hit.y == mining.targetBlock.y && 
                 hit.z == mining.targetBlock.z) {
                 mining.progress += dt;
             } else {
-                // Nuovo blocco - reset progress
                 mining.mining = true;
                 mining.targetBlock = hit;
                 mining.progress = 0.0f;
@@ -92,12 +134,10 @@ void UpdateMining(MiningState& mining, Camera3D cam, World* world, float dt) {
                          hit.x, hit.y, hit.z);
             }
         } else {
-            // Non stiamo colpendo nessun blocco
             mining.mining = false;
             mining.progress = 0.0f;
         }
     } else {
-        // Mouse rilasciato - reset
         mining.mining = false;
         mining.progress = 0.0f;
     }

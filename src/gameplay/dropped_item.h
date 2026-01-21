@@ -5,19 +5,24 @@
 #include "item.h"
 #include <vector>
 
+// Forward declarations
+struct World;
+struct Inventory;
+
 struct DroppedItem {
+    ItemType type;
     Vector3 position;
     Vector3 velocity;
-    ItemType type;
     float lifetime;
     float rotation;
 };
 
-// Sistema globale dropped items
+// Sistema globale
 extern std::vector<DroppedItem> g_droppedItems;
 
+// Funzioni
 void SpawnDroppedItem(ItemType type, Vector3 position);
-void UpdateDroppedItems(Vector3 playerPos, float dt);
+void UpdateDroppedItems(World* world, Inventory* inventory, Vector3 playerPos, float dt);
 void DrawDroppedItems();
 void CleanupDroppedItems();
 

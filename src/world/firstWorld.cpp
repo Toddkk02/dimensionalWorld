@@ -348,7 +348,8 @@ void WorldUpdate(World* world, Vector3 playerPos) {
 
 void WorldDraw(World* world) {
     // CRITICO: Non chiamare LoadMaterialDefault() ogni frame!
-    static Material defaultMat = {0};
+
+    static Material defaultMat = {};
     static bool materialLoaded = false;
     
     if (!materialLoaded) {
@@ -446,6 +447,7 @@ void RegenerateAllChunks(World* world) {
         world->chunks[i].meshGenerated = false;
     }
 }
+
 ItemType RemoveBlock(World* world, int x, int y, int z) {
     // Determina il chunk
     int chunkX = (int)floor((float)x / CHUNK_SIZE);
@@ -479,6 +481,16 @@ ItemType RemoveBlock(World* world, int x, int y, int z) {
         return ItemType::NONE;
     }
     
+    // Determina il tipo di item droppato
+    ItemType dropType = ItemType::DIRT;
+    
+    // Se è il blocco superiore, droppa grass
+    if (y == (int)currentHeight) {
+        dropType = ItemType::GRASS;
+    } else {
+        dropType = ItemType::DIRT;
+    }
+    
     // Rimuovi il blocco abbassando l'altezza di 1
     chunk->heightMap[lx][lz] = (float)(y - 1);
     
@@ -494,15 +506,63 @@ ItemType RemoveBlock(World* world, int x, int y, int z) {
     }
     GenerateChunkMesh(chunk);
     
-    // Determina il tipo di item droppato
-    ItemType dropType = ItemType::DIRT;
+    return dropType;
+}
+
+bool PlaceBlock(World* world, int x, int y, int z, ItemType blockType) {
+    int chunkX = (int)floor((float)x / CHUNK_SIZE);
+    int chunkZ = (int)floor((float)z / CHUNK_SIZE);
     
-    // Se è il blocco superiore, droppa grass
-    if (y == (int)currentHeight) {
-        dropType = ItemType::GRASS;
-    } else {
-        dropType = ItemType::DIRT;
+    Chunk* chunk = NULL;
+    for (int i = 0; i < world->chunkCount; i++) {
+        if (world->chunks[i].chunkX == chunkX && 
+            world->chunks[i].chunkZ == chunkZ) {
+            chunk = &world->chunks[i];
+            break;
+        }
     }
     
-    return dropType;
+    if (!chunk || !chunk->generated) {
+        TraceLog(LOG_WARNING, "PlaceBlock: Chunk not found or not generated");
+        return false;
+    }
+    
+    int lx = x - chunkX * CHUNK_SIZE;
+    int lz = z - chunkZ * CHUNK_SIZE;
+    
+    // Clamp coordinate
+    if (lx < 0) lx = 0;
+    if (lx >= CHUNK_SIZE) lx = CHUNK_SIZE - 1;
+    if (lz < 0) lz = 0;
+    if (lz >= CHUNK_SIZE) lz = CHUNK_SIZE - 1;
+    
+    float currentHeight = chunk->heightMap[lx][lz];
+    
+    // Permetti di piazzare SOLO se y è esattamente currentHeight + 1
+    if (y != (int)currentHeight + 1) {
+        TraceLog(LOG_WARNING, "PlaceBlock: Invalid Y position (y=%d, terrain=%.0f, type=%d)", 
+                 y, currentHeight, (int)blockType);
+        return false;
+    }
+    
+    // Limite massimo altezza
+    if (y > 100) {
+        TraceLog(LOG_WARNING, "PlaceBlock: Y too high (%d)", y);
+        return false;
+    }
+    
+    // Aggiorna l'altezza del terreno
+    chunk->heightMap[lx][lz] = (float)y;
+    
+    TraceLog(LOG_INFO, "PlaceBlock: %s placed at (%d, %d, %d) | New height: %.0f", 
+             GetItemName(blockType), x, y, z, chunk->heightMap[lx][lz]);
+    
+    // Rigenera la mesh
+    if (chunk->meshGenerated) {
+        UnloadMesh(chunk->mesh);
+        chunk->meshGenerated = false;
+    }
+    GenerateChunkMesh(chunk);
+    
+    return true;
 }

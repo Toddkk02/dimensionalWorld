@@ -1,5 +1,7 @@
 #include "dropped_item.h"
 #include "item.h"
+#include "inventory.h"
+#include "../world/firstWorld.h"
 #include <cmath>
 
 // Sistema globale
@@ -34,15 +36,14 @@ void SpawnDroppedItem(ItemType type, Vector3 position) {
     DroppedItem item;
     item.type = type;
     item.position = position;
-    item.position.y += 0.5f;  // Spawna sopra il blocco
-    item.velocity = {0, 2.0f, 0};  // Piccolo salto iniziale
+    item.position.y += 0.5f;
+    item.velocity = {0, 2.0f, 0};
     item.lifetime = 0;
     item.rotation = 0;
-    
     g_droppedItems.push_back(item);
 }
 
-void UpdateDroppedItems(Vector3 playerPos, float dt) {
+void UpdateDroppedItems(World* world, Inventory* inventory, Vector3 playerPos, float dt) {
     for (size_t i = 0; i < g_droppedItems.size(); ) {
         DroppedItem& item = g_droppedItems[i];
         
@@ -55,10 +56,14 @@ void UpdateDroppedItems(Vector3 playerPos, float dt) {
         // Movimento
         item.position = Vec3Add(item.position, Vec3Scale(item.velocity, dt));
         
-        // Collisione base con terreno
-        if (item.position.y < 1.0f) {
-            item.position.y = 1.0f;
+        // Collisione con terreno
+        float terrainHeight = GetTerrainHeightAt(world, item.position.x, item.position.z);
+        
+        if (item.position.y < terrainHeight) {
+            item.position.y = terrainHeight;
             item.velocity.y = 0;
+            item.velocity.x *= 0.95f;
+            item.velocity.z *= 0.95f;
         }
         
         // Magnete verso player
@@ -67,11 +72,15 @@ void UpdateDroppedItems(Vector3 playerPos, float dt) {
             Vector3 dir = Vec3Norm(Vec3Sub(playerPos, item.position));
             item.position = Vec3Add(item.position, Vec3Scale(dir, dt * 5.0f));
             
-            // Raccogli se molto vicino
+            // RACCOLTA NELL'INVENTARIO
             if (dist < 0.5f) {
-                // TODO: Aggiungi all'inventario
-                g_droppedItems.erase(g_droppedItems.begin() + i);
-                continue;
+                if (inventory->AddItem(item.type, 1)) {
+                    TraceLog(LOG_INFO, "Picked up: %s", GetItemName(item.type));
+                    g_droppedItems.erase(g_droppedItems.begin() + i);
+                    continue;
+                } else {
+                    TraceLog(LOG_WARNING, "Inventory full!");
+                }
             }
         }
         

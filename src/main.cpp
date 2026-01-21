@@ -7,36 +7,36 @@
 #include "core/portal.h"
 #include "world/decorations.h"
 #include "gameplay/dropped_item.h"
+#include "gameplay/inventory.h"
 #include <cstdio>
 #include "rlgl.h"
 #include <cmath>
 
-// Funzione per disegnare il feedback visivo del mining
-void DrawMiningProgress(MiningState& mining) {
-    if (!mining.mining) return;
-    
-    // Disegna un cubo wireframe sul blocco che stiamo scavando
+void DrawMiningProgress(MiningState &mining)
+{
+    if (!mining.mining)
+        return;
+
     Vector3 blockCenter = mining.targetBlock;
     blockCenter.x += 0.5f;
     blockCenter.y += 0.5f;
     blockCenter.z += 0.5f;
-    
-    // Cubo che pulsa in base al progresso
+
     float pulseScale = 1.0f + sinf(mining.progress * 10.0f) * 0.1f;
-    
     DrawCubeWires(blockCenter, pulseScale, pulseScale, pulseScale, RED);
-    
-    // Linee di crack che aumentano con il progresso
-    int crackLevel = (int)(mining.progress / 0.5f); // Ogni 0.5 secondi un livello
-    if (crackLevel > 3) crackLevel = 3;
-    
-    for (int i = 0; i <= crackLevel; i++) {
+
+    int crackLevel = (int)(mining.progress / 0.5f);
+    if (crackLevel > 3)
+        crackLevel = 3;
+
+    for (int i = 0; i <= crackLevel; i++)
+    {
         float offset = 0.1f * i;
-        DrawCubeWires(blockCenter, 
-                     1.0f + offset, 
-                     1.0f + offset, 
-                     1.0f + offset, 
-                     Fade(YELLOW, 0.5f));
+        DrawCubeWires(blockCenter,
+                      1.0f + offset,
+                      1.0f + offset,
+                      1.0f + offset,
+                      Fade(YELLOW, 0.5f));
     }
 }
 
@@ -65,6 +65,15 @@ int main(void)
 
     DecorationSystem decorationSystem;
     InitDecorationSystem(&decorationSystem);
+
+    Inventory playerInventory;
+    bool inventoryOpen = false;
+
+    // Riempimento inventario di test
+    playerInventory.AddItem(ItemType::DIRT, 64);
+    playerInventory.AddItem(ItemType::GRASS, 64);
+    playerInventory.AddItem(ItemType::STONE, 64);
+    TraceLog(LOG_INFO, "Test inventory filled with blocks");
 
     SetWorldDimension(currentDim->terrainSeed);
     SetDimensionColors(currentDim->grassTopColor,
@@ -105,6 +114,19 @@ int main(void)
     {
         float deltaTime = GetFrameTime();
 
+        for (int i = 0; i < HOTBAR_SIZE; i++)
+        {
+            if (IsKeyPressed(KEY_ONE + i))
+            {
+                playerInventory.SelectSlot(i);
+            }
+        }
+
+        if (IsKeyPressed(KEY_TAB))
+        {
+            inventoryOpen = !inventoryOpen;
+        }
+
         if (isChangingDimension)
         {
             dimensionChangeTimer += deltaTime;
@@ -134,35 +156,88 @@ int main(void)
         }
         else
         {
-            UpdatePlayerPhysics(&ps, &world, deltaTime);
-            UpdateCamera(&ps.camera, ps.cameraMode);
+            UpdateDroppedItems(&world, &playerInventory, ps.camera.position, deltaTime);
             WorldUpdate(&world, ps.camera.position);
-            UpdateMining(ps.mining, ps.camera, &world, deltaTime);
-            UpdateDroppedItems(ps.camera.position, deltaTime);
 
-            if (ps.mining.progress >= 1.5f)
+            if (!inventoryOpen)
             {
-                ItemType drop = RemoveBlock(&world,
-                                            (int)ps.mining.targetBlock.x,
-                                            (int)ps.mining.targetBlock.y,
-                                            (int)ps.mining.targetBlock.z);
+                UpdatePlayerPhysics(&ps, &world, deltaTime);
+                UpdateCamera(&ps.camera, ps.cameraMode);
+                UpdateMining(ps.mining, ps.camera, &world, deltaTime);
 
-                if (drop != ItemType::NONE)
+                // MINING COMPLETATO
+                if (ps.mining.progress >= 1.5f)
                 {
-                    SpawnDroppedItem(drop, ps.mining.targetBlock);
+                    ItemType drop = RemoveBlock(&world,
+                                                (int)ps.mining.targetBlock.x,
+                                                (int)ps.mining.targetBlock.y,
+                                                (int)ps.mining.targetBlock.z);
+
+                    if (drop != ItemType::NONE)
+                    {
+                        SpawnDroppedItem(drop, ps.mining.targetBlock);
+                    }
+
+                    ps.mining.progress = 0;
                 }
 
-                ps.mining.progress = 0;
-            }
+                // PIAZZAMENTO BLOCCHI - FUORI DAL BLOCCO MINING!
+                if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT))
+                {
+                    TraceLog(LOG_INFO, "=== RIGHT CLICK DETECTED ===");
 
-            UpdatePortalSystem(&portalSystem, ps.camera, &world, &dimensionManager, deltaTime);
+                    Item selectedItem = playerInventory.GetSelected();
+                    TraceLog(LOG_INFO, "Selected item: %s (qty: %d)",
+                             GetItemName(selectedItem.type), selectedItem.quantity);
 
-            Portal *nearPortal = CheckPlayerNearPortal(&portalSystem, ps.camera.position);
-            if (nearPortal && IsKeyPressed(KEY_E))
-            {
-                isChangingDimension = true;
-                targetDimensionID = nearPortal->targetDimensionID;
-                nearPortal->active = false;
+                    if (selectedItem.type != ItemType::NONE && selectedItem.quantity > 0)
+                    {
+                        Vector3 placePos;
+
+                        TraceLog(LOG_INFO, "Camera pos: (%.1f, %.1f, %.1f)",
+                                 ps.camera.position.x, ps.camera.position.y, ps.camera.position.z);
+
+                        if (RaycastPlaceBlock(ps.camera, &world, placePos))
+                        {
+                            TraceLog(LOG_INFO, "Raycast SUCCESS - Attempting to place at (%.0f, %.0f, %.0f)",
+                                     placePos.x, placePos.y, placePos.z);
+
+                            if (PlaceBlock(&world,
+                                          (int)placePos.x,
+                                          (int)placePos.y,
+                                          (int)placePos.z,
+                                          selectedItem.type))
+                            {
+                                playerInventory.RemoveSelected(1);
+                                TraceLog(LOG_INFO, "✓ BLOCK PLACED SUCCESSFULLY!");
+                            }
+                            else
+                            {
+                                TraceLog(LOG_ERROR, "✗ PlaceBlock FAILED");
+                            }
+                        }
+                        else
+                        {
+                            TraceLog(LOG_WARNING, "✗ Raycast failed - no valid position found");
+                        }
+                    }
+                    else
+                    {
+                        TraceLog(LOG_WARNING, "No valid item in hand");
+                    }
+
+                    TraceLog(LOG_INFO, "=== END RIGHT CLICK ===\n");
+                }
+
+                UpdatePortalSystem(&portalSystem, ps.camera, &world, &dimensionManager, deltaTime);
+
+                Portal *nearPortal = CheckPlayerNearPortal(&portalSystem, ps.camera.position);
+                if (nearPortal && IsKeyPressed(KEY_E))
+                {
+                    isChangingDimension = true;
+                    targetDimensionID = nearPortal->targetDimensionID;
+                    nearPortal->active = false;
+                }
             }
         }
 
@@ -187,17 +262,16 @@ int main(void)
         DrawDecorations(&decorationSystem);
         DrawPortals(&portalSystem);
         DrawPortalGun(&portalSystem, ps.camera);
-        DrawMiningProgress(ps.mining);  // ← Feedback visivo mining
+        DrawMiningProgress(ps.mining);
         DrawDroppedItems();
 
         EndMode3D();
 
         DrawFPS(10, 10);
 
-        // Debug text migliorato
         char debugText[500];
         sprintf(debugText,
-                "ESC = mouse | WASD = move | SPACE = jump | LEFT CLICK = mine | RIGHT CLICK = Portal | E = Enter\n"
+                "ESC = mouse | WASD = move | SPACE = jump | LEFT CLICK = mine | RIGHT CLICK = Place Block | E = Enter | TAB = Inventory\n"
                 "Pos: %.1f, %.1f, %.1f | Dimension: %s (%d/%d)\n"
                 "Portals: %zu | Trees: %zu | Rocks: %zu | Crystals: %zu | Items: %zu\n"
                 "Mining: %s | Target: (%.0f, %.0f, %.0f) | Progress: %.1f/1.5s",
@@ -217,29 +291,23 @@ int main(void)
                 ps.mining.progress);
         DrawText(debugText, 10, 30, 16, WHITE);
 
-        // Progress bar del mining
-        if (ps.mining.mining) {
+        if (ps.mining.mining)
+        {
             float progress = fminf(ps.mining.progress / 1.5f, 1.0f);
             int barWidth = 300;
             int barHeight = 30;
             int barX = GetScreenWidth() / 2 - barWidth / 2;
             int barY = GetScreenHeight() - 150;
-            
-            // Background
+
             DrawRectangle(barX, barY, barWidth, barHeight, Fade(BLACK, 0.7f));
-            
-            // Progress bar
-            DrawRectangle(barX, barY, (int)(barWidth * progress), barHeight, 
+            DrawRectangle(barX, barY, (int)(barWidth * progress), barHeight,
                           ColorLerp(RED, GREEN, progress));
-            
-            // Border
             DrawRectangleLines(barX, barY, barWidth, barHeight, WHITE);
-            
-            // Percentuale
+
             char progressText[32];
             sprintf(progressText, "Mining: %.0f%%", progress * 100.0f);
             int textWidth = MeasureText(progressText, 20);
-            DrawText(progressText, barX + barWidth/2 - textWidth/2, barY + 5, 20, WHITE);
+            DrawText(progressText, barX + barWidth / 2 - textWidth / 2, barY + 5, 20, WHITE);
         }
 
         Portal *nearPortal = CheckPlayerNearPortal(&portalSystem, ps.camera.position);
@@ -279,6 +347,15 @@ int main(void)
 
         DrawCircle(GetScreenWidth() / 2, GetScreenHeight() / 2, 3, Fade(GREEN, 0.5f));
         DrawCircleLines(GetScreenWidth() / 2, GetScreenHeight() / 2, 10, Fade(GREEN, 0.3f));
+
+        if (inventoryOpen)
+        {
+            playerInventory.DrawFullInventory();
+        }
+        else
+        {
+            playerInventory.DrawHotbar();
+        }
 
         EndDrawing();
     }

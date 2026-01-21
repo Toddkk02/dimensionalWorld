@@ -10,12 +10,16 @@
 struct Inventory {
     Item slots[INVENTORY_SIZE];
     int selectedSlot = 0;
-
-    // Gestione
+    
+    // Gestione item
     bool AddItem(ItemType type, int amount);
     void RemoveSelected(int amount);
     Item GetSelected();
     void SelectSlot(int index);
+    
+    // UI Rendering
+    void DrawHotbar();
+    void DrawFullInventory();
 };
 
 #endif
