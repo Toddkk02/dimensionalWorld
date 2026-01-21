@@ -373,38 +373,54 @@ void WorldCleanup(World* world) {
     }
 }
 
-void WorldLoadTextures(World* world, DimensionConfig* dimension) {
-    if (world->useTextures) {
-        WorldUnloadTextures(world);
+void WorldLoadTextures(World* world, DimensionConfig* dim) {
+    TraceLog(LOG_INFO, "Loading textures for %s", dim->name.c_str());
+    
+    // Carica solo se non già caricate E path non vuoto
+    if (dim->grassTopTex.id == 0 && !dim->grassTopTexture.empty()) {
+        if (FileExists(dim->grassTopTexture.c_str())) {
+            dim->grassTopTex = LoadTexture(dim->grassTopTexture.c_str());
+            dim->grassTopLoaded = true;
+            TraceLog(LOG_INFO, "Loaded grassTop: %s", dim->grassTopTexture.c_str());
+        } else {
+            TraceLog(LOG_WARNING, "MISSING: %s", dim->grassTopTexture.c_str());
+        }
     }
     
-    world->useTextures = false;
-    
-    if (FileExists(dimension->grassTopTexture.c_str())) {
-        world->grassTopTexture = LoadTexture(dimension->grassTopTexture.c_str());
-        world->useTextures = true;
+    if (dim->dirtSideTex.id == 0 && !dim->dirtSideTexture.empty()) {
+        if (FileExists(dim->dirtSideTexture.c_str())) {
+            dim->dirtSideTex = LoadTexture(dim->dirtSideTexture.c_str());
+            dim->dirtSideLoaded = true;
+            TraceLog(LOG_INFO, "Loaded dirtSide: %s", dim->dirtSideTexture.c_str());
+        } else {
+            TraceLog(LOG_WARNING, "MISSING: %s", dim->dirtSideTexture.c_str());
+        }
     }
     
-    if (FileExists(dimension->dirtSideTexture.c_str())) {
-        world->dirtSideTexture = LoadTexture(dimension->dirtSideTexture.c_str());
+    if (dim->dirtTex.id == 0 && !dim->dirtTexture.empty()) {
+        if (FileExists(dim->dirtTexture.c_str())) {
+            dim->dirtTex = LoadTexture(dim->dirtTexture.c_str());
+            dim->dirtLoaded = true;
+            TraceLog(LOG_INFO, "Loaded dirt: %s", dim->dirtTexture.c_str());
+        } else {
+            TraceLog(LOG_WARNING, "MISSING: %s", dim->dirtTexture.c_str());
+        }
     }
     
-    if (FileExists(dimension->dirtTexture.c_str())) {
-        world->dirtTexture = LoadTexture(dimension->dirtTexture.c_str());
+    if (dim->skyboxTex.id == 0 && !dim->skyboxTexture.empty()) {
+        dim->skyboxTex = LoadTexture(dim->skyboxTexture.c_str());
     }
     
-    if (FileExists(dimension->waterTexture.c_str())) {
-        world->waterTexture = LoadTexture(dimension->waterTexture.c_str());
-    }
+    world->useTextures = true;  // Forza uso texture
 }
 
 void WorldUnloadTextures(World* world) {
     if (world->useTextures) {
-        UnloadTexture(world->grassTopTexture);
-        UnloadTexture(world->dirtSideTexture);
-        UnloadTexture(world->dirtTexture);
-        UnloadTexture(world->waterTexture);
-        world->useTextures = false;
+        //UnloadTexture(world->grassTopTexture);
+        //UnloadTexture(world->dirtSideTexture);
+        //UnloadTexture(world->dirtTexture);
+        //UnloadTexture(world->waterTexture);
+        //world->useTextures = false;
     }
 }
 

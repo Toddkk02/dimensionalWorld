@@ -37,7 +37,7 @@ void ShootPortal(PortalSystem* ps, Camera3D camera, World* world, DimensionManag
     
     float maxDistance = 100.0f;
     float step = 0.5f;
-    Vector3 hitPoint = {0};
+    Vector3 hitPoint = {0.0f, 0.0f, 0.0f};
     bool foundHit = false;
     
     for (float dist = 0; dist < maxDistance; dist += step) {

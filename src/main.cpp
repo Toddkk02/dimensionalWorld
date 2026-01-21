@@ -3,370 +3,373 @@
 #include "rendering/shaders.h"
 #include "world/firstWorld.h"
 #include "world/dimensions.h"
+#include "world/blocks.h"
 #include "rendering/skybox.h"
 #include "core/portal.h"
 #include "world/decorations.h"
 #include "gameplay/dropped_item.h"
 #include "gameplay/inventory.h"
+#include "gameplay/mining.h"
+#include "world/worldRenderer.h"
+#include "core/cosmicState.h"
 #include <cstdio>
-#include "rlgl.h"
 #include <cmath>
+#include "rlgl.h"
 
-void DrawMiningProgress(MiningState &mining)
-{
-    if (!mining.mining)
-        return;
-
+void DrawMiningProgress(MiningState &mining) {
+    if (!mining.mining) return;
     Vector3 blockCenter = mining.targetBlock;
-    blockCenter.x += 0.5f;
-    blockCenter.y += 0.5f;
-    blockCenter.z += 0.5f;
-
+    blockCenter.x += 0.5f; blockCenter.y += 0.5f; blockCenter.z += 0.5f;
     float pulseScale = 1.0f + sinf(mining.progress * 10.0f) * 0.1f;
     DrawCubeWires(blockCenter, pulseScale, pulseScale, pulseScale, RED);
-
+    
     int crackLevel = (int)(mining.progress / 0.5f);
-    if (crackLevel > 3)
-        crackLevel = 3;
-
-    for (int i = 0; i <= crackLevel; i++)
-    {
+    if (crackLevel > 3) crackLevel = 3;
+    for (int i = 0; i <= crackLevel; i++) {
         float offset = 0.1f * i;
-        DrawCubeWires(blockCenter,
-                      1.0f + offset,
-                      1.0f + offset,
-                      1.0f + offset,
-                      Fade(YELLOW, 0.5f));
+        DrawCubeWires(blockCenter, 1.0f + offset, 1.0f + offset, 1.0f + offset, Fade(YELLOW, 0.5f));
     }
 }
 
-int main(void)
-{
-    InitWindow(1600, 900, "Dimensional World - Infinite Dimensions");
-    rlEnableDepthTest();
+int main() {
+    const int screenWidth = 1600, screenHeight = 900;
+    InitWindow(screenWidth, screenHeight, "Dimensional World - Infinite Dimensions");
     SetTargetFPS(60);
+    rlEnableDepthTest();
 
-    LoadTerrainShader();
+    TraceLog(LOG_INFO, "========================================");
+    TraceLog(LOG_INFO, "   DIMENSIONAL WORLD - STARTING UP");
+    TraceLog(LOG_INFO, "========================================");
 
+    // ========== COSMIC STATE ==========
+    CosmicState::Get();
+    TraceLog(LOG_INFO, "✓ CosmicState initialized");
+
+    // ========== DIMENSION MANAGER ==========
     DimensionManager dimensionManager;
     dimensionManager.Initialize();
-
     DimensionConfig *currentDim = dimensionManager.GetCurrentDimension();
+    
+    if (!currentDim) { 
+        TraceLog(LOG_ERROR, "✗ Failed to get current dimension!");
+        CloseWindow(); 
+        return -1; 
+    }
+    
+    TraceLog(LOG_INFO, "✓ Dimension Manager initialized with %d dimensions", 
+             dimensionManager.GetDimensionCount());
 
-    Skybox skybox = LoadSkyboxFromDimension(currentDim);
+    // ========== LOAD DIMENSION TEXTURES ==========
+    TraceLog(LOG_INFO, "Loading textures for dimension: %s", currentDim->name.c_str());
+    dimensionManager.LoadDimensionTextures(currentDim);
 
+    // ========== SHADER SYSTEM ==========
+    LoadTerrainShader();
+    TraceLog(LOG_INFO, "✓ Shaders loaded");
+
+    // ========== WORLD ==========
     World world;
     WorldInit(&world);
-    WorldLoadTextures(&world, currentDim);
-
-    PortalSystem portalSystem;
-    InitPortalSystem(&portalSystem);
-    portalSystem.currentDimensionID = currentDim->id;
-
-    DecorationSystem decorationSystem;
-    InitDecorationSystem(&decorationSystem);
-
-    Inventory playerInventory;
-    bool inventoryOpen = false;
-
-    // Riempimento inventario di test
-    playerInventory.AddItem(ItemType::DIRT, 64);
-    playerInventory.AddItem(ItemType::GRASS, 64);
-    playerInventory.AddItem(ItemType::STONE, 64);
-    TraceLog(LOG_INFO, "Test inventory filled with blocks");
-
     SetWorldDimension(currentDim->terrainSeed);
-    SetDimensionColors(currentDim->grassTopColor,
-                       currentDim->dirtSideColor,
-                       currentDim->dirtColor);
+    SetDimensionColors(currentDim->grassTopColor, currentDim->dirtSideColor, currentDim->dirtColor);
+    WorldLoadTextures(&world, currentDim);
+    TraceLog(LOG_INFO, "✓ World initialized (Textures: %s)", world.useTextures ? "ENABLED" : "DISABLED");
 
-    for (int x = -2; x <= 2; x++)
-    {
-        for (int z = -2; z <= 2; z++)
-        {
-            WorldUpdate(&world, (Vector3){(float)(x * 16), 10.0f, (float)(z * 16)});
-        }
-    }
+    // ========== WORLD RENDERER ==========
+    WorldRenderer worldRenderer;
+    InitWorldRenderer(&worldRenderer, currentDim);
+    TraceLog(LOG_INFO, "✓ World Renderer initialized");
 
-    GenerateDecorationsForDimension(&decorationSystem, &world, currentDim);
-
-    PlayerSystem ps;
+    // ========== PLAYER ==========
+    PlayerSystem ps = {};
     ps.camera.position = (Vector3){8.0f, 50.0f, 8.0f};
     ps.camera.target = (Vector3){8.0f, 49.0f, 9.0f};
     ps.camera.up = (Vector3){0.0f, 1.0f, 0.0f};
     ps.camera.fovy = 60.0f;
     ps.camera.projection = CAMERA_PERSPECTIVE;
     ps.cameraMode = CAMERA_FIRST_PERSON;
-    ps.velocity = (Vector3){0.0f, 0.0f, 0.0f};
+    ps.velocity = (Vector3){0, 0, 0};
     ps.isGrounded = false;
     ps.gravity = -30.0f;
     ps.inWater = false;
     ps.mining.mining = false;
     ps.mining.progress = 0.0f;
-    ps.mining.targetBlock = (Vector3){0, 0, 0};
     DisableCursor();
+    TraceLog(LOG_INFO, "✓ Player system initialized");
 
+    // ========== SKYBOX ==========
+    Skybox skybox = LoadSkyboxFromDimension(currentDim);
+    TraceLog(LOG_INFO, "✓ Skybox loaded");
+
+    // ========== DECORATION SYSTEM ==========
+    DecorationSystem decorationSystem;
+    InitDecorationSystem(&decorationSystem);
+    GenerateDecorationsForDimension(&decorationSystem, &world, currentDim);
+    TraceLog(LOG_INFO, "✓ Decorations generated (Trees:%d Rocks:%d Crystals:%d)", 
+             (int)decorationSystem.trees.size(),
+             (int)decorationSystem.rocks.size(),
+             (int)decorationSystem.crystals.size());
+
+    // ========== PORTAL SYSTEM ==========
+    PortalSystem portalSystem;
+    InitPortalSystem(&portalSystem);
+    portalSystem.currentDimensionID = currentDim->id;
+    TraceLog(LOG_INFO, "✓ Portal system initialized");
+
+    // ========== INVENTORY ==========
+    Inventory playerInventory;
+    playerInventory.AddItem(ItemType::DIRT, 64);
+    playerInventory.AddItem(ItemType::GRASS, 64);
+    playerInventory.AddItem(ItemType::STONE, 64);
+    TraceLog(LOG_INFO, "✓ Inventory initialized with starter items");
+
+    bool inventoryOpen = false;
     bool isChangingDimension = false;
     float dimensionChangeTimer = 0.0f;
     int targetDimensionID = 0;
 
-    while (!WindowShouldClose())
-    {
+    TraceLog(LOG_INFO, "========================================");
+    TraceLog(LOG_INFO, "   ENTERING MAIN GAME LOOP");
+    TraceLog(LOG_INFO, "========================================");
+
+    // ========== MAIN LOOP ==========
+    while (!WindowShouldClose()) {
         float deltaTime = GetFrameTime();
+        CosmicState::Get().Update(deltaTime);
 
-        for (int i = 0; i < HOTBAR_SIZE; i++)
-        {
-            if (IsKeyPressed(KEY_ONE + i))
-            {
-                playerInventory.SelectSlot(i);
-            }
-        }
-
-        if (IsKeyPressed(KEY_TAB))
-        {
+        // ========== INPUT ==========
+        if (IsKeyPressed(KEY_TAB) || IsKeyPressed(KEY_E)) 
             inventoryOpen = !inventoryOpen;
+        
+        for (int i = 0; i < HOTBAR_SIZE; i++)
+            if (IsKeyPressed(KEY_ONE + i)) 
+                playerInventory.SelectSlot(i);
+
+        if (!inventoryOpen && !isChangingDimension) {
+            // ========== WORLD UPDATE ==========
+            WorldUpdate(&world, ps.camera.position);
+            UpdatePlayerPhysics(&ps, &world, deltaTime);
+            UpdateCamera(&ps.camera, ps.cameraMode);
+            
+            // ========== MINING (SCAVARE) ==========
+            if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                UpdateMining(ps.mining, ps.camera, &world, deltaTime);
+                
+                if (ps.mining.mining && ps.mining.progress >= 2.0f) {
+                    int bx = (int)ps.mining.targetBlock.x;
+                    int by = (int)ps.mining.targetBlock.y;
+                    int bz = (int)ps.mining.targetBlock.z;
+                    
+                    ItemType droppedItem = RemoveBlock(&world, bx, by, bz);
+                    
+                    if (droppedItem != ItemType::NONE) {
+                        Vector3 dropPos = {
+                            ps.mining.targetBlock.x + 0.5f,
+                            ps.mining.targetBlock.y + 1.0f,
+                            ps.mining.targetBlock.z + 0.5f
+                        };
+                        SpawnDroppedItem(droppedItem, dropPos);
+                    }
+                    
+                    ps.mining.mining = false;
+                    ps.mining.progress = 0.0f;
+                }
+            } else {
+                ps.mining.mining = false;
+                ps.mining.progress = 0.0f;
+            }
+            
+            // ========== PIAZZAMENTO BLOCCHI ==========
+            if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+                Item selectedItem = playerInventory.GetSelected();
+                
+                if (selectedItem.type != ItemType::NONE && selectedItem.quantity > 0) {
+                    Vector3 placePos;
+                    if (RaycastPlaceBlock(ps.camera, &world, placePos)) {
+                        int px = (int)placePos.x;
+                        int py = (int)placePos.y;
+                        int pz = (int)placePos.z;
+                        
+                        if (PlaceBlock(&world, px, py, pz, selectedItem.type)) {
+                            playerInventory.RemoveSelected(1);
+                        }
+                    }
+                }
+            }
+            
+            // ========== PORTALI ==========
+            UpdatePortalSystem(&portalSystem, ps.camera, &world, &dimensionManager, deltaTime);
+            
+            Portal* nearPortal = CheckPlayerNearPortal(&portalSystem, ps.camera.position);
+            if (nearPortal && !isChangingDimension) {
+                isChangingDimension = true;
+                targetDimensionID = nearPortal->targetDimensionID;
+                dimensionChangeTimer = 0.0f;
+                CosmicState::Get().OnPortalCrossed();
+                TraceLog(LOG_INFO, ">>> PORTAL ENTERED! Traveling to dimension %d <<<", targetDimensionID);
+            }
+            
+            // ========== DROPPED ITEMS ==========
+            UpdateDroppedItems(&world, &playerInventory, ps.camera.position, deltaTime);
         }
 
-        if (isChangingDimension)
-        {
+        // ========== DIMENSION CHANGE ==========
+        if (isChangingDimension) {
             dimensionChangeTimer += deltaTime;
-
-            if (dimensionChangeTimer > 1.5f)
-            {
-                portalSystem.currentDimensionID = targetDimensionID;
-                currentDim = dimensionManager.GetDimension(targetDimensionID);
-
+            
+            if (dimensionChangeTimer > 0.5f && dimensionChangeTimer < 0.6f) {
+                TraceLog(LOG_INFO, "========================================");
+                TraceLog(LOG_INFO, "   DIMENSION CHANGE IN PROGRESS");
+                TraceLog(LOG_INFO, "========================================");
+                
+                // 1. CLEANUP OLD DIMENSION
+                TraceLog(LOG_INFO, "→ Unloading skybox...");
                 UnloadSkybox(skybox);
-                skybox = LoadSkyboxFromDimension(currentDim);
-
+                
+                TraceLog(LOG_INFO, "→ Cleaning decorations...");
+                CleanupDecorationSystem(&decorationSystem);
+                
+                TraceLog(LOG_INFO, "→ Unloading world renderer...");
+                UnloadWorldRenderer(&worldRenderer);
+                
+                TraceLog(LOG_INFO, "→ Cleaning world...");
+                WorldCleanup(&world);
+                
+                TraceLog(LOG_INFO, "→ Unloading old textures...");
+                dimensionManager.UnloadDimensionTextures(currentDim);
+                
+                // 2. LOAD NEW DIMENSION
+                currentDim = dimensionManager.GetDimension(targetDimensionID);
+                
+                if (!currentDim) {
+                    TraceLog(LOG_ERROR, "✗ Failed to get dimension %d!", targetDimensionID);
+                    isChangingDimension = false;
+                    continue;
+                }
+                
+                TraceLog(LOG_INFO, "→ Loading dimension: %s", currentDim->name.c_str());
+                
+                // 3. LOAD TEXTURES
+                TraceLog(LOG_INFO, "→ Loading new textures...");
+                dimensionManager.LoadDimensionTextures(currentDim);
+                
+                // 4. SETUP WORLD
+                TraceLog(LOG_INFO, "→ Re-initializing world...");
+                WorldInit(&world);
                 SetWorldDimension(currentDim->terrainSeed);
-                SetDimensionColors(currentDim->grassTopColor,
-                                   currentDim->dirtSideColor,
-                                   currentDim->dirtColor);
-
+                SetDimensionColors(currentDim->grassTopColor, currentDim->dirtSideColor, currentDim->dirtColor);
                 WorldLoadTextures(&world, currentDim);
-                RegenerateAllChunks(&world);
+                
+                // 5. INIT RENDERER
+                TraceLog(LOG_INFO, "→ Re-initializing renderer...");
+                InitWorldRenderer(&worldRenderer, currentDim);
+                
+                // 6. LOAD SKYBOX
+                TraceLog(LOG_INFO, "→ Loading new skybox...");
+                skybox = LoadSkyboxFromDimension(currentDim);
+                
+                // 7. GENERATE DECORATIONS
+                TraceLog(LOG_INFO, "→ Generating decorations...");
+                InitDecorationSystem(&decorationSystem);
                 GenerateDecorationsForDimension(&decorationSystem, &world, currentDim);
-
+                
+                // 8. UPDATE PORTAL SYSTEM
+                portalSystem.currentDimensionID = targetDimensionID;
+                
+                // 9. COSMIC EVENT
+                CosmicState::Get().OnDimensionEntered(currentDim->name);
+                
+                TraceLog(LOG_INFO, "✓ Dimension change complete!");
+                TraceLog(LOG_INFO, "========================================");
+            }
+            
+            if (dimensionChangeTimer > 1.5f) {
                 isChangingDimension = false;
                 dimensionChangeTimer = 0.0f;
-
-                TraceLog(LOG_INFO, "Entered dimension: %s", currentDim->name.c_str());
-            }
-        }
-        else
-        {
-            UpdateDroppedItems(&world, &playerInventory, ps.camera.position, deltaTime);
-            WorldUpdate(&world, ps.camera.position);
-
-            if (!inventoryOpen)
-            {
-                UpdatePlayerPhysics(&ps, &world, deltaTime);
-                UpdateCamera(&ps.camera, ps.cameraMode);
-                UpdateMining(ps.mining, ps.camera, &world, deltaTime);
-
-                // MINING COMPLETATO
-                if (ps.mining.progress >= 1.5f)
-                {
-                    ItemType drop = RemoveBlock(&world,
-                                                (int)ps.mining.targetBlock.x,
-                                                (int)ps.mining.targetBlock.y,
-                                                (int)ps.mining.targetBlock.z);
-
-                    if (drop != ItemType::NONE)
-                    {
-                        SpawnDroppedItem(drop, ps.mining.targetBlock);
-                    }
-
-                    ps.mining.progress = 0;
-                }
-
-                // PIAZZAMENTO BLOCCHI - FUORI DAL BLOCCO MINING!
-                if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT))
-                {
-                    TraceLog(LOG_INFO, "=== RIGHT CLICK DETECTED ===");
-
-                    Item selectedItem = playerInventory.GetSelected();
-                    TraceLog(LOG_INFO, "Selected item: %s (qty: %d)",
-                             GetItemName(selectedItem.type), selectedItem.quantity);
-
-                    if (selectedItem.type != ItemType::NONE && selectedItem.quantity > 0)
-                    {
-                        Vector3 placePos;
-
-                        TraceLog(LOG_INFO, "Camera pos: (%.1f, %.1f, %.1f)",
-                                 ps.camera.position.x, ps.camera.position.y, ps.camera.position.z);
-
-                        if (RaycastPlaceBlock(ps.camera, &world, placePos))
-                        {
-                            TraceLog(LOG_INFO, "Raycast SUCCESS - Attempting to place at (%.0f, %.0f, %.0f)",
-                                     placePos.x, placePos.y, placePos.z);
-
-                            if (PlaceBlock(&world,
-                                          (int)placePos.x,
-                                          (int)placePos.y,
-                                          (int)placePos.z,
-                                          selectedItem.type))
-                            {
-                                playerInventory.RemoveSelected(1);
-                                TraceLog(LOG_INFO, "✓ BLOCK PLACED SUCCESSFULLY!");
-                            }
-                            else
-                            {
-                                TraceLog(LOG_ERROR, "✗ PlaceBlock FAILED");
-                            }
-                        }
-                        else
-                        {
-                            TraceLog(LOG_WARNING, "✗ Raycast failed - no valid position found");
-                        }
-                    }
-                    else
-                    {
-                        TraceLog(LOG_WARNING, "No valid item in hand");
-                    }
-
-                    TraceLog(LOG_INFO, "=== END RIGHT CLICK ===\n");
-                }
-
-                UpdatePortalSystem(&portalSystem, ps.camera, &world, &dimensionManager, deltaTime);
-
-                Portal *nearPortal = CheckPlayerNearPortal(&portalSystem, ps.camera.position);
-                if (nearPortal && IsKeyPressed(KEY_E))
-                {
-                    isChangingDimension = true;
-                    targetDimensionID = nearPortal->targetDimensionID;
-                    nearPortal->active = false;
-                }
             }
         }
 
+        // ========== RENDERING ==========
         BeginDrawing();
-        ClearBackground(BLACK);
+        ClearBackground(SKYBLUE);
 
-        if (isChangingDimension)
-        {
-            float progress = dimensionChangeTimer / 1.5f;
-            float flashIntensity = sinf(progress * 20.0f) * (1.0f - progress);
-            ClearBackground(Fade(WHITE, flashIntensity * 0.9f));
-        }
-
+        // Background
         DrawSkybox(skybox, ps.camera);
 
         BeginMode3D(ps.camera);
-
-        BeginShaderMode(terrainShader);
-        WorldDraw(&world);
-        EndShaderMode();
-
+        
+        // ✅ USA IL WORLD RENDERER CON TEXTURE
+        DrawWorld(&worldRenderer, &world);
+        
         DrawDecorations(&decorationSystem);
         DrawPortals(&portalSystem);
-        DrawPortalGun(&portalSystem, ps.camera);
-        DrawMiningProgress(ps.mining);
         DrawDroppedItems();
-
+        DrawMiningProgress(ps.mining);
+        
         EndMode3D();
+        
+        DrawPortalGun(&portalSystem, ps.camera);
 
+        // ========== HUD ==========
         DrawFPS(10, 10);
-
-        char debugText[500];
-        sprintf(debugText,
-                "ESC = mouse | WASD = move | SPACE = jump | LEFT CLICK = mine | RIGHT CLICK = Place Block | E = Enter | TAB = Inventory\n"
-                "Pos: %.1f, %.1f, %.1f | Dimension: %s (%d/%d)\n"
-                "Portals: %zu | Trees: %zu | Rocks: %zu | Crystals: %zu | Items: %zu\n"
-                "Mining: %s | Target: (%.0f, %.0f, %.0f) | Progress: %.1f/1.5s",
+        
+        char debug[512];
+        sprintf(debug, "DIM: %s | Tension: %.1f | Pos: (%.0f,%.0f,%.0f)\nTextures: %s | Renderer: %s", 
+                currentDim->name.c_str(), 
+                CosmicState::Get().GetTension(),
                 ps.camera.position.x, ps.camera.position.y, ps.camera.position.z,
-                currentDim->name.c_str(),
-                currentDim->id + 1,
-                dimensionManager.GetDimensionCount(),
-                portalSystem.portals.size(),
-                decorationSystem.trees.size(),
-                decorationSystem.rocks.size(),
-                decorationSystem.crystals.size(),
-                g_droppedItems.size(),
-                ps.mining.mining ? "YES" : "NO",
-                ps.mining.targetBlock.x,
-                ps.mining.targetBlock.y,
-                ps.mining.targetBlock.z,
-                ps.mining.progress);
-        DrawText(debugText, 10, 30, 16, WHITE);
-
-        if (ps.mining.mining)
-        {
-            float progress = fminf(ps.mining.progress / 1.5f, 1.0f);
-            int barWidth = 300;
-            int barHeight = 30;
-            int barX = GetScreenWidth() / 2 - barWidth / 2;
-            int barY = GetScreenHeight() - 150;
-
-            DrawRectangle(barX, barY, barWidth, barHeight, Fade(BLACK, 0.7f));
-            DrawRectangle(barX, barY, (int)(barWidth * progress), barHeight,
-                          ColorLerp(RED, GREEN, progress));
-            DrawRectangleLines(barX, barY, barWidth, barHeight, WHITE);
-
-            char progressText[32];
-            sprintf(progressText, "Mining: %.0f%%", progress * 100.0f);
-            int textWidth = MeasureText(progressText, 20);
-            DrawText(progressText, barX + barWidth / 2 - textWidth / 2, barY + 5, 20, WHITE);
+                world.useTextures ? "ON" : "OFF",
+                worldRenderer.initialized ? "ACTIVE" : "INACTIVE");
+        DrawText(debug, 10, 30, 16, WHITE);
+        
+        DrawText("LMB: Mine | RMB: Place | MMB: Portal | TAB: Inventory | 1-9: Hotbar", 
+                 10, screenHeight - 30, 16, LIGHTGRAY);
+        
+        // Crosshair
+        if (!inventoryOpen) {
+            int centerX = screenWidth / 2;
+            int centerY = screenHeight / 2;
+            DrawLine(centerX - 10, centerY, centerX + 10, centerY, WHITE);
+            DrawLine(centerX, centerY - 10, centerX, centerY + 10, WHITE);
         }
 
-        Portal *nearPortal = CheckPlayerNearPortal(&portalSystem, ps.camera.position);
-        if (nearPortal && !isChangingDimension)
-        {
-            DimensionConfig *targetDim = dimensionManager.GetDimension(nearPortal->targetDimensionID);
-            char portalText[128];
-            sprintf(portalText, "Press E to enter: %s", targetDim->name.c_str());
-            int textWidth = MeasureText(portalText, 30);
-            DrawText(portalText, GetScreenWidth() / 2 - textWidth / 2,
-                     GetScreenHeight() - 100, 30, nearPortal->color);
-
-            int descWidth = MeasureText(targetDim->description.c_str(), 20);
-            DrawText(targetDim->description.c_str(),
-                     GetScreenWidth() / 2 - descWidth / 2,
-                     GetScreenHeight() - 60, 20, Fade(WHITE, 0.7f));
-        }
-
-        if (isChangingDimension)
-        {
-            float progress = dimensionChangeTimer / 1.5f;
-            DimensionConfig *targetDim = dimensionManager.GetDimension(targetDimensionID);
-
-            char travelText[128];
-            sprintf(travelText, "Traveling to %s...", targetDim->name.c_str());
-            int textWidth = MeasureText(travelText, 40);
-
-            Color textColor = ColorLerp(WHITE, targetDim->grassTopColor, progress);
-            DrawText(travelText, GetScreenWidth() / 2 - textWidth / 2,
-                     GetScreenHeight() / 2, 40, textColor);
-
-            DrawRectangle(GetScreenWidth() / 2 - 200, GetScreenHeight() / 2 + 60,
-                          (int)(400 * progress), 10, targetDim->grassTopColor);
-            DrawRectangleLines(GetScreenWidth() / 2 - 200, GetScreenHeight() / 2 + 60,
-                               400, 10, WHITE);
-        }
-
-        DrawCircle(GetScreenWidth() / 2, GetScreenHeight() / 2, 3, Fade(GREEN, 0.5f));
-        DrawCircleLines(GetScreenWidth() / 2, GetScreenHeight() / 2, 10, Fade(GREEN, 0.3f));
-
-        if (inventoryOpen)
-        {
+        // Inventory
+        if (inventoryOpen) {
             playerInventory.DrawFullInventory();
-        }
-        else
-        {
+        } else {
             playerInventory.DrawHotbar();
+        }
+        
+        // Dimension change effect
+        if (isChangingDimension) {
+            float alpha = fminf(dimensionChangeTimer / 1.5f, 1.0f);
+            DrawRectangle(0, 0, screenWidth, screenHeight, Fade(BLACK, alpha * 0.8f));
+            
+            const char* text = "Traveling between dimensions...";
+            int textWidth = MeasureText(text, 40);
+            DrawText(text, screenWidth/2 - textWidth/2, screenHeight/2 - 20, 40, 
+                     Fade(WHITE, sinf(dimensionChangeTimer * 5.0f) * 0.5f + 0.5f));
         }
 
         EndDrawing();
     }
 
-    UnloadTerrainShader();
+    // ========== CLEANUP ==========
+    TraceLog(LOG_INFO, "========================================");
+    TraceLog(LOG_INFO, "   SHUTTING DOWN");
+    TraceLog(LOG_INFO, "========================================");
+    
     UnloadSkybox(skybox);
-    WorldUnloadTextures(&world);
+    UnloadWorldRenderer(&worldRenderer);
+    dimensionManager.Cleanup();
+    UnloadTerrainShader();
     WorldCleanup(&world);
     CleanupPortalSystem(&portalSystem);
     CleanupDecorationSystem(&decorationSystem);
     CleanupDroppedItems();
+    
+    TraceLog(LOG_INFO, "✓ Cleanup complete");
     CloseWindow();
+    
     return 0;
 }

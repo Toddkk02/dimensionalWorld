@@ -3,7 +3,7 @@
 
 #include "raylib.h"
 
-// Forward declaration - NON includere dimensions.h qui!
+// Forward declaration - NON includere dimensions.h qui per evitare dipendenze circolari
 struct DimensionConfig;
 
 typedef struct {
@@ -13,7 +13,7 @@ typedef struct {
 } Skybox;
 
 Skybox LoadSkybox(const char *imagePath, Color tint);
-Skybox LoadSkyboxFromDimension(struct DimensionConfig* dimension);  // ← Usa struct
+Skybox LoadSkyboxFromDimension(struct DimensionConfig* dimension);
 void DrawSkybox(Skybox skybox, Camera3D camera);
 void UnloadSkybox(Skybox skybox);
 

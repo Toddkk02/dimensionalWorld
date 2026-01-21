@@ -2,8 +2,9 @@
 #define PORTAL_H
 
 #include "raylib.h"
-#include "../world/firstWorld.h"      // ← CAMBIA QUI
-#include "../world/dimensions.h"
+#include "../world/blockTypes.h"    // Base types
+#include "../world/firstWorld.h"    // World struct
+#include "../world/dimensions.h"    // DimensionConfig & DimensionManager
 #include <vector>
 
 typedef struct Portal {

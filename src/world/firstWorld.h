@@ -3,6 +3,7 @@
 
 #include <raylib.h>
 #include "../gameplay/item.h"
+#include "blockTypes.h"  // Include la definizione UNICA di BlockType
 
 #define CHUNK_SIZE 16
 #define MAX_CHUNKS 256
@@ -10,11 +11,7 @@
 #define RENDER_DISTANCE 3
 #define WATER_LEVEL 4.0f
 
-typedef enum BlockType {
-    BLOCK_AIR,
-    BLOCK_DIRT,
-    BLOCK_WATER
-} BlockType;
+// RIMOSSA la ridefinizione di BlockType - ora usa quella da blockTypes.h
 
 typedef struct Chunk {
     int chunkX, chunkZ;
@@ -53,9 +50,9 @@ void RegenerateAllChunks(World* world);
 
 void WorldLoadTextures(World* world, struct DimensionConfig* dimension);
 void WorldUnloadTextures(World* world);
-// Ritorna tipo blocco rimosso
-ItemType RemoveBlock(World* world, int x, int y, int z);  // ← Aggiungi World* come primo parametro
-bool PlaceBlock(World* world, int x, int y, int z, ItemType blockType);
 
+// Ritorna tipo blocco rimosso
+ItemType RemoveBlock(World* world, int x, int y, int z);
+bool PlaceBlock(World* world, int x, int y, int z, ItemType blockType);
 
 #endif
