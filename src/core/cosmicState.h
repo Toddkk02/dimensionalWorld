@@ -2,14 +2,17 @@
 
 #include <string>
 #include <vector>
+
 class CosmicState {
 public:
-    static CosmicState& Get();   // ← riferimento
+    static CosmicState& Get();
 
     void Update(float deltaTime);
     void OnPortalCrossed();
     void OnDimensionEntered(const std::string& dimensionID);
     void OnArtifactCollected(const std::string& artifactID);
+    void OnWatcherSeen();
+    void OnMonumentActivated();
     void RemoveMadness();
 
     float GetTension() const;

@@ -1,4 +1,5 @@
 #include "raylib.h"
+#include "raymath.h"
 #include "core/player.h"
 #include "rendering/shaders.h"
 #include "world/firstWorld.h"
@@ -12,6 +13,9 @@
 #include "gameplay/mining.h"
 #include "world/worldRenderer.h"
 #include "core/cosmicState.h"
+#include "horror/watchers.h"
+#include "horror/audioManager.h"
+#include "world/monuments.h"
 #include <cstdio>
 #include <cmath>
 #include "rlgl.h"
@@ -40,7 +44,7 @@ void DrawMiningProgress(MiningState &mining)
 int main()
 {
     const int screenWidth = 1600, screenHeight = 900;
-    InitWindow(screenWidth, screenHeight, "Dimensional World - Infinite Dimensions");
+    InitWindow(screenWidth, screenHeight, "Dimensional World - Cosmic Horror Edition");
     SetTargetFPS(60);
     rlEnableDepthTest();
 
@@ -73,7 +77,28 @@ int main()
 
     // ========== SHADER SYSTEM ==========
     LoadTerrainShader();
-    TraceLog(LOG_INFO, "✓ Shaders loaded");
+
+    // ========== LOAD CHROMATIC SHADER ==========
+    Shader chromaticShader = {0};
+    int aberrationLoc = -1;
+
+    chromaticShader = LoadShader("assets/shaders/glsl330/chromatic_vertex.vs",
+                                 "assets/shaders/glsl330/chromatic.fs");
+
+    if (chromaticShader.id > 0)
+    {
+        aberrationLoc = GetShaderLocation(chromaticShader, "aberration");
+        chromaticShader.locs[SHADER_LOC_MATRIX_MVP] = GetShaderLocation(chromaticShader, "mvp");
+        TraceLog(LOG_INFO, "✓ Chromatic aberration shader loaded (ID: %d)", chromaticShader.id);
+    }
+    else
+    {
+        TraceLog(LOG_WARNING, "✗ Chromatic shader not loaded");
+    }
+
+    // ========== RENDER TEXTURE FOR POST-PROCESSING ==========
+    RenderTexture2D screenTarget = LoadRenderTexture(screenWidth, screenHeight);
+    TraceLog(LOG_INFO, "✓ Render target created");
 
     // ========== WORLD ==========
     World world;
@@ -81,12 +106,12 @@ int main()
     SetWorldDimension(currentDim->terrainSeed);
     SetDimensionColors(currentDim->grassTopColor, currentDim->dirtSideColor, currentDim->dirtColor);
     WorldLoadTextures(&world, currentDim);
-    TraceLog(LOG_INFO, "✓ World initialized (Textures: %s)", world.useTextures ? "ENABLED" : "DISABLED");
+    TraceLog(LOG_INFO, "✓ World initialized");
 
-    // ========== WORLD RENDERER ==========
+    // ========== WORLD RENDERER (WITH INTEGRATED FOG) ==========
     WorldRenderer worldRenderer;
     InitWorldRenderer(&worldRenderer, currentDim);
-    TraceLog(LOG_INFO, "✓ World Renderer initialized");
+    TraceLog(LOG_INFO, "✓ World Renderer initialized with fog shader");
 
     // ========== PLAYER ==========
     PlayerSystem ps = {};
@@ -129,8 +154,26 @@ int main()
     playerInventory.AddItem(ItemType::DIRT, 64);
     playerInventory.AddItem(ItemType::GRASS, 64);
     playerInventory.AddItem(ItemType::STONE, 64);
-    TraceLog(LOG_INFO, "✓ Inventory initialized with starter items");
+    TraceLog(LOG_INFO, "✓ Inventory initialized");
 
+    // ========== HORROR SYSTEMS ==========
+    TraceLog(LOG_INFO, "========================================");
+    TraceLog(LOG_INFO, "   INITIALIZING HORROR SYSTEMS");
+    TraceLog(LOG_INFO, "========================================");
+
+    AudioManager::Get().Init();
+    AudioManager::Get().SetMasterVolume(0.7f);
+
+    WatcherSystem watcherSystem;
+    watcherSystem.Init();
+
+    MonumentSystem monumentSystem;
+    monumentSystem.Init();
+    monumentSystem.GenerateMonuments(ps.camera.position, 5);
+
+    TraceLog(LOG_INFO, "✓ All horror systems initialized");
+
+    // ========== GAME STATE ==========
     bool inventoryOpen = false;
     bool isChangingDimension = false;
     float dimensionChangeTimer = 0.0f;
@@ -144,19 +187,84 @@ int main()
     while (!WindowShouldClose())
     {
         float deltaTime = GetFrameTime();
+
+        // ========== UPDATE COSMIC STATE ==========
         CosmicState::Get().Update(deltaTime);
-        if (currentDim != 0)
+        float tension = CosmicState::Get().GetTension();
+
+        // ========== UPDATE HORROR SYSTEMS ==========
+        AudioManager::Get().Update(tension, deltaTime);
+        watcherSystem.Update(ps.camera, tension, deltaTime);
+        monumentSystem.Update(ps.camera.position, deltaTime);
+
+        // ========== CALCULATE FOG PARAMETERS ==========
+        float fogDensity = 0.01f + (tension * 0.0024f);
+
+        Color fogColor;
+        if (tension < 20.0f)
         {
-            float tension = CosmicState::Get().GetTension();
-            if (tension > 15.0f)
-            {
-                // to implement
-            }
+            float intensity = 200.0f - (tension * 2.0f);
+            fogColor = (Color){
+                (unsigned char)intensity,
+                (unsigned char)intensity,
+                (unsigned char)intensity,
+                255};
+        }
+        else if (tension < 50.0f)
+        {
+            float t = (tension - 20.0f) / 30.0f;
+            fogColor.r = (unsigned char)(160 - t * 90);
+            fogColor.g = (unsigned char)(160 - t * 130);
+            fogColor.b = (unsigned char)(160 + t * 75);
+            fogColor.a = 255;
+        }
+        else if (tension < 80.0f)
+        {
+            float t = (tension - 50.0f) / 30.0f;
+            fogColor.r = (unsigned char)(70 - t * 50);
+            fogColor.g = (unsigned char)(30 - t * 20);
+            fogColor.b = (unsigned char)(235 - t * 135);
+            fogColor.a = 255;
         }
         else
         {
-            CosmicState::Get().RemoveMadness();
+            float t = (tension - 80.0f) / 20.0f;
+            if (t > 1.0f)
+                t = 1.0f;
+            fogColor.r = (unsigned char)(20 - t * 10);
+            fogColor.g = (unsigned char)(10 - t * 5);
+            fogColor.b = (unsigned char)(100 - t * 50);
+            fogColor.a = 255;
         }
+
+        // ========== CHROMATIC ABERRATION AMOUNT ==========
+        // Per un effetto VERAMENTE nauseante:
+        float chromaticAmount = 0.0f;
+
+        // Base sempre presente
+        chromaticAmount = 0.005f;
+
+        // Scala esponenziale con la tensione
+        chromaticAmount += (tension / 100.0f) * 0.15f; // Max +0.15 a tension 100
+
+        // Pulsazione cardiaca (aumenta con tensione)
+        float heartbeatSpeed = 2.0f + (tension / 50.0f) * 4.0f; // 2Hz -> 6Hz
+        float heartbeat = sinf(GetTime() * heartbeatSpeed) * 0.5f + 0.5f;
+        chromaticAmount += heartbeat * (tension / 100.0f) * 0.08f;
+
+        // Glitch randomico ad alta tensione
+        if (tension > 70.0f)
+        {
+            if ((int)(GetTime() * 10.0f) % 10 == 0)
+            { // 10% del tempo
+                chromaticAmount += 0.05f;
+            }
+        }
+
+        // Cap massimo (opzionale, per evitare crash GPU)
+        if (chromaticAmount > 0.25f)
+            chromaticAmount = 0.25f;
+
         // ========== INPUT ==========
         if (IsKeyPressed(KEY_TAB) || IsKeyPressed(KEY_E))
             inventoryOpen = !inventoryOpen;
@@ -165,14 +273,39 @@ int main()
             if (IsKeyPressed(KEY_ONE + i))
                 playerInventory.SelectSlot(i);
 
+        // ========== FOG DEBUG (PRESS F) ==========
+        if (IsKeyPressed(KEY_F))
+        {
+            TraceLog(LOG_INFO, "========== FOG DEBUG ==========");
+            TraceLog(LOG_INFO, "  Fog Density: %.4f", fogDensity);
+            TraceLog(LOG_INFO, "  Fog Color: (%d,%d,%d)", fogColor.r, fogColor.g, fogColor.b);
+            TraceLog(LOG_INFO, "  Shader ID: %d", worldRenderer.fogShader.id);
+            TraceLog(LOG_INFO, "  fogDensityLoc: %d", worldRenderer.fogDensityLoc);
+            TraceLog(LOG_INFO, "  fogColorLoc: %d", worldRenderer.fogColorLoc);
+            TraceLog(LOG_INFO, "  viewPosLoc: %d", worldRenderer.viewPosLoc);
+            TraceLog(LOG_INFO, "  Tension: %.1f", tension);
+            TraceLog(LOG_INFO, "  Camera Pos: (%.1f, %.1f, %.1f)",
+                     ps.camera.position.x, ps.camera.position.y, ps.camera.position.z);
+            TraceLog(LOG_INFO, "===============================");
+        }
+
         if (!inventoryOpen && !isChangingDimension)
         {
             // ========== WORLD UPDATE ==========
             WorldUpdate(&world, ps.camera.position);
             UpdatePlayerPhysics(&ps, &world, deltaTime);
             UpdateCamera(&ps.camera, ps.cameraMode);
+            if (IsKeyPressed(KEY_K))
+            {
+                Vector3 forward = Vector3Subtract(ps.camera.target, ps.camera.position);
+                forward = Vector3Normalize(forward);
+                Vector3 spawnPos = Vector3Add(ps.camera.position, Vector3Scale(forward, 15.0f));
+                spawnPos.y = ps.camera.position.y;
 
-            // ========== MINING (SCAVARE) ==========
+                watcherSystem.SpawnWatcher(spawnPos, 50.0f);
+                TraceLog(LOG_INFO, "👁️ DEBUG: EyeTooth watcher spawned 15m ahead!");
+            }
+            // ========== MINING ==========
             if (IsMouseButtonDown(MOUSE_LEFT_BUTTON))
             {
                 UpdateMining(ps.mining, ps.camera, &world, deltaTime);
@@ -204,7 +337,7 @@ int main()
                 ps.mining.progress = 0.0f;
             }
 
-            // ========== PIAZZAMENTO BLOCCHI ==========
+            // ========== BLOCK PLACEMENT ==========
             if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON))
             {
                 Item selectedItem = playerInventory.GetSelected();
@@ -226,7 +359,7 @@ int main()
                 }
             }
 
-            // ========== PORTALI ==========
+            // ========== PORTALS ==========
             UpdatePortalSystem(&portalSystem, ps.camera, &world, &dimensionManager, deltaTime);
 
             Portal *nearPortal = CheckPlayerNearPortal(&portalSystem, ps.camera.position);
@@ -254,23 +387,14 @@ int main()
                 TraceLog(LOG_INFO, "   DIMENSION CHANGE IN PROGRESS");
                 TraceLog(LOG_INFO, "========================================");
 
-                // 1. CLEANUP OLD DIMENSION
-                TraceLog(LOG_INFO, "→ Unloading skybox...");
+                // Cleanup old dimension
                 UnloadSkybox(skybox);
-
-                TraceLog(LOG_INFO, "→ Cleaning decorations...");
                 CleanupDecorationSystem(&decorationSystem);
-
-                TraceLog(LOG_INFO, "→ Unloading world renderer...");
                 UnloadWorldRenderer(&worldRenderer);
-
-                TraceLog(LOG_INFO, "→ Cleaning world...");
                 WorldCleanup(&world);
-
-                TraceLog(LOG_INFO, "→ Unloading old textures...");
                 dimensionManager.UnloadDimensionTextures(currentDim);
 
-                // 2. LOAD NEW DIMENSION
+                // Load new dimension
                 currentDim = dimensionManager.GetDimension(targetDimensionID);
 
                 if (!currentDim)
@@ -281,39 +405,23 @@ int main()
                 }
 
                 TraceLog(LOG_INFO, "→ Loading dimension: %s", currentDim->name.c_str());
-
-                // 3. LOAD TEXTURES
-                TraceLog(LOG_INFO, "→ Loading new textures...");
                 dimensionManager.LoadDimensionTextures(currentDim);
 
-                // 4. SETUP WORLD
-                TraceLog(LOG_INFO, "→ Re-initializing world...");
                 WorldInit(&world);
                 SetWorldDimension(currentDim->terrainSeed);
                 SetDimensionColors(currentDim->grassTopColor, currentDim->dirtSideColor, currentDim->dirtColor);
                 WorldLoadTextures(&world, currentDim);
-
-                // 5. INIT RENDERER
-                TraceLog(LOG_INFO, "→ Re-initializing renderer...");
                 InitWorldRenderer(&worldRenderer, currentDim);
-
-                // 6. LOAD SKYBOX
-                TraceLog(LOG_INFO, "→ Loading new skybox...");
                 skybox = LoadSkyboxFromDimension(currentDim);
-
-                // 7. GENERATE DECORATIONS
-                TraceLog(LOG_INFO, "→ Generating decorations...");
                 InitDecorationSystem(&decorationSystem);
                 GenerateDecorationsForDimension(&decorationSystem, &world, currentDim);
-
-                // 8. UPDATE PORTAL SYSTEM
                 portalSystem.currentDimensionID = targetDimensionID;
 
-                // 9. COSMIC EVENT
+                monumentSystem.GenerateMonuments(ps.camera.position, 5);
+
                 CosmicState::Get().OnDimensionEntered(currentDim->name);
 
                 TraceLog(LOG_INFO, "✓ Dimension change complete!");
-                TraceLog(LOG_INFO, "========================================");
             }
 
             if (dimensionChangeTimer > 1.5f)
@@ -323,43 +431,96 @@ int main()
             }
         }
 
-        // ========== RENDERING ==========
-        BeginDrawing();
-        ClearBackground(SKYBLUE);
+        // ========== RENDERING TO TEXTURE ==========
+        BeginTextureMode(screenTarget);
+        ClearBackground(fogColor);
 
-        // Background
+        // Skybox (no fog)
         DrawSkybox(skybox, ps.camera);
 
         BeginMode3D(ps.camera);
 
-        // ✅ USA IL WORLD RENDERER CON TEXTURE
-        DrawWorld(&worldRenderer, &world);
-
+        // Draw world WITH integrated fog shader
+        DrawWorld(&worldRenderer, &world, ps.camera, fogDensity, fogColor);
         DrawDecorations(&decorationSystem);
+
+        // Draw elements WITHOUT fog
+        monumentSystem.Draw();
+        watcherSystem.Draw(ps.camera);
         DrawPortals(&portalSystem);
         DrawDroppedItems();
         DrawMiningProgress(ps.mining);
 
         EndMode3D();
+        EndTextureMode();
 
-        DrawPortalGun(&portalSystem, ps.camera);
+        // ========== DRAW TO SCREEN WITH CHROMATIC ABERRATION ==========
+        BeginDrawing();
+        ClearBackground(BLACK);
+
+        // Apply chromatic aberration if tension > 30
+        if (chromaticShader.id > 0 && chromaticAmount > 0.001f)
+        {
+            BeginShaderMode(chromaticShader);
+            SetShaderValue(chromaticShader, aberrationLoc, &chromaticAmount, SHADER_UNIFORM_FLOAT);
+        }
+
+        // Draw render texture to screen
+        DrawTextureRec(
+            screenTarget.texture,
+            (Rectangle){0, 0, (float)screenTarget.texture.width, -(float)screenTarget.texture.height},
+            (Vector2){0, 0},
+            WHITE);
+
+        if (chromaticShader.id > 0 && chromaticAmount > 0.001f)
+        {
+            EndShaderMode();
+        }
 
         // ========== HUD ==========
+        DrawPortalGun(&portalSystem, ps.camera);
         DrawFPS(10, 10);
 
         char debug[512];
-        sprintf(debug, "DIM: %s | Tension: %.1f | Pos: (%.0f,%.0f,%.0f)\nTextures: %s | Renderer: %s",
+        sprintf(debug,
+                "DIM: %s | Tension: %.1f | Watchers: %d | Monuments: %d/%d\n"
+                "Fog: %.3f | Chromatic: %.4f | Pos: (%.0f,%.0f,%.0f)\n"
+                "Press F for fog debug",
                 currentDim->name.c_str(),
-                CosmicState::Get().GetTension(),
-                ps.camera.position.x, ps.camera.position.y, ps.camera.position.z,
-                world.useTextures ? "ON" : "OFF",
-                worldRenderer.initialized ? "ACTIVE" : "INACTIVE");
+                tension,
+                watcherSystem.GetActiveWatcherCount(),
+                monumentSystem.GetActivatedCount(),
+                monumentSystem.GetDiscoveredCount(),
+                fogDensity,
+                chromaticAmount,
+                ps.camera.position.x, ps.camera.position.y, ps.camera.position.z);
         DrawText(debug, 10, 30, 16, WHITE);
-        DimensionConfig *selDim = dimensionManager.GetDimension(portalSystem.currentDimensionID);
 
+        DimensionConfig *selDim = dimensionManager.GetDimension(portalSystem.currentDimensionID);
         char portalInfo[128];
         sprintf(portalInfo, "Portal Target: %s", selDim->name.c_str());
-        DrawText(portalInfo, 10, 55, 16, selDim->grassTopColor);
+        DrawText(portalInfo, 10, 90, 16, selDim->grassTopColor);
+
+        // Warning messages based on tension
+        if (tension > 25.0f && tension < 30.0f && CosmicState::Get().IsEventTriggered("firstwatcher"))
+        {
+            DrawText("Something is watching...",
+                     screenWidth / 2 - 120, 120, 20,
+                     Fade(YELLOW, sinf(GetTime() * 3.0f) * 0.5f + 0.5f));
+        }
+        else if (tension > 50.0f && tension < 70.0f)
+        {
+            DrawText("You feel watched...",
+                     screenWidth / 2 - 100, 120, 20,
+                     Fade(RED, sinf(GetTime() * 3.0f) * 0.5f + 0.5f));
+        }
+        else if (tension > 80.0f)
+        {
+            DrawText("REALITY IS BREAKING",
+                     screenWidth / 2 - 150, 120, 24,
+                     Fade(RED, sinf(GetTime() * 10.0f) * 0.5f + 0.5f));
+        }
+
         DrawText("LMB: Mine | RMB: Place | MMB: Portal | TAB: Inventory | 1-9: Hotbar",
                  20, screenHeight - 30, 16, LIGHTGRAY);
 
@@ -402,10 +563,19 @@ int main()
     TraceLog(LOG_INFO, "   SHUTTING DOWN");
     TraceLog(LOG_INFO, "========================================");
 
+    watcherSystem.Cleanup();
+    monumentSystem.Cleanup();
+    AudioManager::Get().Cleanup();
+
+    UnloadRenderTexture(screenTarget);
+    if (chromaticShader.id > 0)
+        UnloadShader(chromaticShader);
+
     UnloadSkybox(skybox);
     UnloadWorldRenderer(&worldRenderer);
     dimensionManager.Cleanup();
     UnloadTerrainShader();
+
     WorldCleanup(&world);
     CleanupPortalSystem(&portalSystem);
     CleanupDecorationSystem(&decorationSystem);
