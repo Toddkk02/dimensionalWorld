@@ -67,7 +67,8 @@ int main()
         CloseWindow();
         return -1;
     }
-
+    CosmicState::Get().OnDimensionEntered(currentDim->name);
+    TraceLog(LOG_INFO, "✓ Initial dimension set to: %s", currentDim->name.c_str());
     TraceLog(LOG_INFO, "✓ Dimension Manager initialized with %d dimensions",
              dimensionManager.GetDimensionCount());
 
@@ -363,13 +364,27 @@ int main()
             UpdatePortalSystem(&portalSystem, ps.camera, &world, &dimensionManager, deltaTime);
 
             Portal *nearPortal = CheckPlayerNearPortal(&portalSystem, ps.camera.position);
+
             if (nearPortal && !isChangingDimension)
             {
-                isChangingDimension = true;
-                targetDimensionID = nearPortal->targetDimensionID;
-                dimensionChangeTimer = 0.0f;
-                CosmicState::Get().OnPortalCrossed();
-                TraceLog(LOG_INFO, ">>> PORTAL ENTERED! Traveling to dimension %d <<<", targetDimensionID);
+                DrawText("Premi [E] per attraversare il portale",
+                         screenWidth / 2 - 160,
+                         screenHeight / 2 + 40,
+                         20,
+                         RAYWHITE);
+
+                if (IsKeyPressed(KEY_E))
+                {
+                    isChangingDimension = true;
+                    targetDimensionID = nearPortal->targetDimensionID;
+                    dimensionChangeTimer = 0.0f;
+
+                    CosmicState::Get().OnPortalCrossed();
+
+                    TraceLog(LOG_INFO,
+                             ">>> PORTAL CONFIRMED (E) -> Dimension %d <<<",
+                             targetDimensionID);
+                }
             }
 
             // ========== DROPPED ITEMS ==========
@@ -405,6 +420,10 @@ int main()
                 }
 
                 TraceLog(LOG_INFO, "→ Loading dimension: %s", currentDim->name.c_str());
+
+                // ✅ VERIFICA CHE QUESTA LINEA CI SIA:
+                CosmicState::Get().OnDimensionEntered(currentDim->name);
+
                 dimensionManager.LoadDimensionTextures(currentDim);
 
                 WorldInit(&world);

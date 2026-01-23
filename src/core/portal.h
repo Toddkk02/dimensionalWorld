@@ -28,6 +28,7 @@ typedef struct PortalSystem {
     PortalGun gun;
     int currentDimensionID;
     float portalCheckRadius;
+    float enterCooldown;
 } PortalSystem;
 
 void InitPortalSystem(PortalSystem* ps);

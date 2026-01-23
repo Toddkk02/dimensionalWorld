@@ -7,6 +7,7 @@ class CosmicState {
 public:
     static CosmicState& Get();
 
+    bool DoesDimensionIncreaseTension() const;
     void Update(float deltaTime);
     void OnPortalCrossed();
     void OnDimensionEntered(const std::string& dimensionID);
