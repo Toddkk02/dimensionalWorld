@@ -34,19 +34,28 @@ void SetWorldDimension(int dimension) {
 
 static void GenerateChunk(Chunk* c) {
     float waterLevel = WATER_LEVEL;
+    
+    // Alloca oreMap dinamicamente
+    c->oreMap = new int**[CHUNK_SIZE + 1];
+    for (int x = 0; x <= CHUNK_SIZE; x++) {
+        c->oreMap[x] = new int*[MAX_HEIGHT];
+        for (int y = 0; y < MAX_HEIGHT; y++) {
+            c->oreMap[x][y] = new int[CHUNK_SIZE + 1]();
+        }
+    }
+    
+    // Genera heightmap e liquidMap
     for (int x = 0; x <= CHUNK_SIZE; x++) {
         for (int z = 0; z <= CHUNK_SIZE; z++) {
             float wx = (float)(c->chunkX * CHUNK_SIZE + x);
             float wz = (float)(c->chunkZ * CHUNK_SIZE + z);
             
-            // Usa seed diverso per dimensione diversa
             float height = stb_perlin_noise3(wx * 0.02f, currentDimensionSeed, wz * 0.02f, 0, 0, 0) * 8.0f +
                           stb_perlin_noise3(wx * 0.05f, 10 + currentDimensionSeed, wz * 0.05f, 0, 0, 0) * 4.0f +
                           stb_perlin_noise3(wx * 0.1f, 20 + currentDimensionSeed, wz * 0.1f, 0, 0, 0) * 2.0f + 5.0f;
             
             c->heightMap[x][z] = height;
             
-            // Calcola il livello dell'acqua
             if (height < waterLevel) {
                 c->liquidMap[x][z] = waterLevel - height;
             } else {
@@ -54,6 +63,54 @@ static void GenerateChunk(Chunk* c) {
             }
         }
     }
+    
+    // Genera minerali sotterranei
+    for (int x = 0; x <= CHUNK_SIZE; x++) {
+        for (int z = 0; z <= CHUNK_SIZE; z++) {
+            float wx = (float)(c->chunkX * CHUNK_SIZE + x);
+            float wz = (float)(c->chunkZ * CHUNK_SIZE + z);
+            int maxHeight = (int)c->heightMap[x][z];
+            
+            if (maxHeight > MAX_HEIGHT) maxHeight = MAX_HEIGHT;
+            
+            for (int y = 0; y <= maxHeight && y < MAX_HEIGHT; y++) {
+                float wy = (float)y;
+                
+                // IRON ORE (comune, y < 40)
+                if (y < 40) {
+                    float ironNoise = stb_perlin_noise3(wx * 0.1f, wy * 0.1f, wz * 0.1f, 0, 0, 0);
+                    if (ironNoise > 0.6f) {
+                        c->oreMap[x][y][z] = (int)ItemType::IRON_ORE;
+                        continue;
+                    }
+                }
+                
+                // GOLD ORE (raro, y < 25)
+                if (y < 25) {
+                    float goldNoise = stb_perlin_noise3(wx * 0.15f, wy * 0.15f, wz * 0.15f, 100, 0, 0);
+                    if (goldNoise > 0.75f) {
+                        c->oreMap[x][y][z] = (int)ItemType::GOLD_ORE;
+                        continue;
+                    }
+                }
+                
+                // DIAMOND (molto raro, y < 15)
+                if (y < 15) {
+                    float diamondNoise = stb_perlin_noise3(wx * 0.2f, wy * 0.2f, wz * 0.2f, 200, 0, 0);
+                    if (diamondNoise > 0.85f) {
+                        c->oreMap[x][y][z] = (int)ItemType::DIAMOND;
+                        continue;
+                    }
+                }
+                
+                // STONE (resto del sottosuolo, y < maxHeight - 3)
+                if (y < maxHeight - 3) {
+                    c->oreMap[x][y][z] = (int)ItemType::STONE;
+                }
+            }
+        }
+    }
+    
     c->generated = true;
 }
 
@@ -325,10 +382,10 @@ static void GenerateChunkMesh(Chunk* c) {
 
 void WorldInit(World* world) {
     world->chunkCount = 0;
-    // Inizializza tutti i chunk
     for (int i = 0; i < MAX_CHUNKS; i++) {
         world->chunks[i].generated = false;
         world->chunks[i].meshGenerated = false;
+        world->chunks[i].oreMap = nullptr;  // ← Inizializza a null
         memset(&world->chunks[i].mesh, 0, sizeof(Mesh));
     }
 }
@@ -369,6 +426,18 @@ void WorldCleanup(World* world) {
         if (world->chunks[i].meshGenerated) {
             UnloadMesh(world->chunks[i].mesh);
             world->chunks[i].meshGenerated = false;
+        }
+        
+        // ← AGGIUNGI: Dealloca oreMap
+        if (world->chunks[i].oreMap) {
+            for (int x = 0; x <= CHUNK_SIZE; x++) {
+                for (int y = 0; y < MAX_HEIGHT; y++) {
+                    delete[] world->chunks[i].oreMap[x][y];
+                }
+                delete[] world->chunks[i].oreMap[x];
+            }
+            delete[] world->chunks[i].oreMap;
+            world->chunks[i].oreMap = nullptr;
         }
     }
 }

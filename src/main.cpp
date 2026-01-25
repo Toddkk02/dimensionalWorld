@@ -156,7 +156,7 @@ int main()
     playerInventory.AddItem(ItemType::GRASS, 64);
     playerInventory.AddItem(ItemType::STONE, 64);
     TraceLog(LOG_INFO, "✓ Inventory initialized");
-
+  DecorationMiningState decMining = {false, 0, 0, 0.0f};
     // ========== HORROR SYSTEMS ==========
     TraceLog(LOG_INFO, "========================================");
     TraceLog(LOG_INFO, "   INITIALIZING HORROR SYSTEMS");
@@ -295,6 +295,8 @@ int main()
             // ========== WORLD UPDATE ==========
             WorldUpdate(&world, ps.camera.position);
             UpdatePlayerPhysics(&ps, &world, deltaTime);
+            CollisionWithDecoration(&decorationSystem, &ps);
+
             UpdateCamera(&ps.camera, ps.cameraMode);
             if (IsKeyPressed(KEY_K))
             {
@@ -307,35 +309,46 @@ int main()
                 TraceLog(LOG_INFO, "👁️ DEBUG: EyeTooth watcher spawned 15m ahead!");
             }
             // ========== MINING ==========
+            static DecorationMiningState decMining = {false, 0, 0, 0.0f};
+
             if (IsMouseButtonDown(MOUSE_LEFT_BUTTON))
             {
-                UpdateMining(ps.mining, ps.camera, &world, deltaTime);
+                // PRIMA: Prova a minare decorazioni (alberi/rocce)
+                bool minedDecoration = MineDecoration(&decorationSystem, &decMining, ps.camera, deltaTime);
 
-                if (ps.mining.mining && ps.mining.progress >= 2.0f)
+                if (!minedDecoration)
                 {
-                    int bx = (int)ps.mining.targetBlock.x;
-                    int by = (int)ps.mining.targetBlock.y;
-                    int bz = (int)ps.mining.targetBlock.z;
+                    // ALTRIMENTI: Mining blocchi terreno normale
+                    UpdateMining(ps.mining, ps.camera, &world, deltaTime);
 
-                    ItemType droppedItem = RemoveBlock(&world, bx, by, bz);
-
-                    if (droppedItem != ItemType::NONE)
+                    if (ps.mining.mining && ps.mining.progress >= 2.0f)
                     {
-                        Vector3 dropPos = {
-                            ps.mining.targetBlock.x + 0.5f,
-                            ps.mining.targetBlock.y + 1.0f,
-                            ps.mining.targetBlock.z + 0.5f};
-                        SpawnDroppedItem(droppedItem, dropPos);
-                    }
+                        int bx = (int)ps.mining.targetBlock.x;
+                        int by = (int)ps.mining.targetBlock.y;
+                        int bz = (int)ps.mining.targetBlock.z;
 
-                    ps.mining.mining = false;
-                    ps.mining.progress = 0.0f;
+                        ItemType droppedItem = RemoveBlock(&world, bx, by, bz);
+
+                        if (droppedItem != ItemType::NONE)
+                        {
+                            Vector3 dropPos = {
+                                ps.mining.targetBlock.x + 0.5f,
+                                ps.mining.targetBlock.y + 1.0f,
+                                ps.mining.targetBlock.z + 0.5f};
+                            SpawnDroppedItem(droppedItem, dropPos);
+                        }
+
+                        ps.mining.mining = false;
+                        ps.mining.progress = 0.0f;
+                    }
                 }
             }
             else
             {
                 ps.mining.mining = false;
                 ps.mining.progress = 0.0f;
+                decMining.mining = false;
+                decMining.progress = 0.0f;
             }
 
             // ========== BLOCK PLACEMENT ==========
@@ -405,8 +418,8 @@ int main()
                 // Cleanup old dimension
                 UnloadSkybox(skybox);
                 CleanupDecorationSystem(&decorationSystem);
-                UnloadWorldRenderer(&worldRenderer);
-                WorldCleanup(&world);
+                WorldCleanup(&world);                // ← PRIMA pulisci i chunk
+                UnloadWorldRenderer(&worldRenderer); // ← POI unload shader
                 dimensionManager.UnloadDimensionTextures(currentDim);
 
                 // Load new dimension
@@ -470,6 +483,28 @@ int main()
         DrawDroppedItems();
         DrawMiningProgress(ps.mining);
 
+        // ========== VISUAL FEEDBACK MINING DECORAZIONI ==========
+        static DecorationMiningState globalDecMining = {false, 0, 0, 0.0f};
+        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON))
+        {
+            MineDecoration(&decorationSystem, &globalDecMining, ps.camera, 0);
+
+            if (globalDecMining.mining &&
+                globalDecMining.targetIndex < (globalDecMining.targetType == 0
+                                                   ? decorationSystem.trees.size()
+                                                   : decorationSystem.rocks.size()))
+            {
+
+                Vector3 targetPos = (globalDecMining.targetType == 0)
+                                        ? decorationSystem.trees[globalDecMining.targetIndex].position
+                                        : decorationSystem.rocks[globalDecMining.targetIndex].position;
+
+                float pulseScale = 1.0f + sinf(globalDecMining.progress * 10.0f) * 0.2f;
+                DrawSphereWires(targetPos, pulseScale * 2.0f, 8, 8, YELLOW);
+            }
+        }
+
+        EndMode3D();
         EndMode3D();
         EndTextureMode();
 
@@ -560,6 +595,24 @@ int main()
         else
         {
             playerInventory.DrawHotbar();
+        }
+        
+        // ========== BARRA PROGRESSO MINING DECORAZIONI ==========
+        if (decMining.mining) {
+            int barWidth = 200;
+            int barHeight = 20;
+            int x = screenWidth / 2 - barWidth / 2;
+            int y = screenHeight - 120;
+            
+            float progress = decMining.progress / 3.0f;
+            
+            DrawRectangle(x, y, barWidth, barHeight, Fade(BLACK, 0.7f));
+            DrawRectangle(x, y, (int)(barWidth * progress), barHeight, YELLOW);
+            DrawRectangleLines(x, y, barWidth, barHeight, WHITE);
+            
+            const char* targetName = (decMining.targetType == 0) ? "Tree" : "Rock";
+            DrawText(TextFormat("Mining %s: %d%%", targetName, (int)(progress * 100)), 
+                     x, y - 25, 20, WHITE);
         }
 
         // Dimension change effect

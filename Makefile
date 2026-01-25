@@ -9,7 +9,7 @@ HORROR_DIR = $(SRC_DIR)/horror
 
 # --- COMPILER & FLAGS ---
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -I./include
+CXXFLAGS = -std=c++17 -Wall -Wextra -I./include -g -O0
 LDFLAGS = -lraylib -lGL -lm -lpthread -ldl -lrt -lX11 -lstdc++
 
 # --- SOURCE FILES ---

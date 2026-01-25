@@ -18,7 +18,8 @@ typedef struct Chunk {
     bool generated;
     bool meshGenerated;
     float heightMap[CHUNK_SIZE + 1][CHUNK_SIZE + 1]; 
-    float liquidMap[CHUNK_SIZE + 1][CHUNK_SIZE + 1]; 
+    float liquidMap[CHUNK_SIZE + 1][CHUNK_SIZE + 1];
+    int*** oreMap;  // ← Puntatore a 3D array
     Mesh mesh;
 } Chunk;
 

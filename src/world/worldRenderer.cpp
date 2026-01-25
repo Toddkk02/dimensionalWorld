@@ -110,13 +110,8 @@ void UnloadWorldRenderer(WorldRenderer* wr) {
 
     TraceLog(LOG_INFO, "Unloading World Renderer...");
 
-    if (wr->materialsLoaded) {
-        // NON unloadare i materiali perché hanno reference allo shader
-        // Unloada solo lo shader DOPO
-        wr->materialsLoaded = false;
-    }
-    
-    // Unload shader SOLO UNA VOLTA
+    // NON unloadare i materiali - sono automatici con lo shader
+    // Unload solo lo shader
     if (wr->fogShader.id > 0) {
         UnloadShader(wr->fogShader);
         wr->fogShader.id = 0;
@@ -124,4 +119,5 @@ void UnloadWorldRenderer(WorldRenderer* wr) {
     }
 
     wr->initialized = false;
+    wr->materialsLoaded = false;
 }

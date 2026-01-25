@@ -11,7 +11,11 @@ enum class ItemType {
     STONE,
     CRYSTAL,
     SAND,
-    ICE
+    ICE,
+    WOOD,      
+    IRON_ORE,  
+    GOLD_ORE,  
+    DIAMOND    
 };
 
 // Item singolo

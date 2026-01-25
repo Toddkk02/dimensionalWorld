@@ -5,6 +5,14 @@
 #include "../world/firstWorld.h"      // ← CAMBIA QUI
 #include "../world/dimensions.h"
 #include <vector>
+#include "../core/player.h"
+
+struct DecorationMiningState {
+    bool mining;
+    int targetType; // 0=tree, 1=rock, 2=crystal
+    int targetIndex;
+    float progress;
+};
 
 typedef struct TreeDecoration {
     Vector3 position;
@@ -45,9 +53,9 @@ void InitDecorationSystem(DecorationSystem* ds);
 void GenerateDecorationsForDimension(DecorationSystem* ds, World* world, DimensionConfig* dimension);
 void DrawDecorations(DecorationSystem* ds);
 void CleanupDecorationSystem(DecorationSystem* ds);
-
+void CollisionWithDecoration(DecorationSystem* ds, PlayerSystem* player);
 Mesh CreateTreeMesh();
 Mesh CreateRockMesh(int seed);
 Mesh CreateCrystalMesh(int seed);
-
+bool MineDecoration(DecorationSystem* ds, DecorationMiningState* mining, Camera3D cam, float deltaTime);
 #endif
